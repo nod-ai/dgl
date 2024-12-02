@@ -258,7 +258,7 @@ void LibraVertexCut(
       }
     }
   }
-  delete cache;
+  delete[] cache;
 
   for (int64_t c = 0; c < nc; c++) {
     std::string path = prefix + "/community" + std::to_string(c) + ".txt";
@@ -473,23 +473,15 @@ void Libra2dglSetLR(
   int64_t *lrtensor_ptr = lrtensor.Ptr<int64_t>();    // 1D tensor
 
   int32_t width = nc;
-  int64_t cnt = 0;
-  int64_t avg_split_copy = 0, scnt = 0;
 
   for (int64_t i = 0; i < Nn; i++) {
-    if (gdt_key_ptr[i] <= 0) {
-      cnt++;
-    } else {
+    if (gdt_key_ptr[i] > 0) {
       int32_t val = RandomEngine::ThreadLocal()->RandInt(gdt_key_ptr[i]);
       CHECK(val >= 0 && val < gdt_key_ptr[i]);
       CHECK(gdt_key_ptr[i] <= nc);
 
       int64_t *ptr = gdt_value_ptr + i * width;
       lrtensor_ptr[i] = ptr[val];
-    }
-    if (gdt_key_ptr[i] > 1) {
-      avg_split_copy += gdt_key_ptr[i];
-      scnt++;
     }
   }
 }
