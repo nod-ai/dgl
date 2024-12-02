@@ -150,7 +150,7 @@ class UnitGraph::COO : public BaseHeteroGraph {
   }
 
   /** @brief Pin the adj_: COOMatrix of the COO graph. */
-  void PinMemory_() { adj_.PinMemory_(); }
+  void PinMemory_() override { adj_.PinMemory_(); }
 
   /** @brief Unpin the adj_: COOMatrix of the COO graph. */
   void UnpinMemory_() { adj_.UnpinMemory_(); }
@@ -554,7 +554,7 @@ class UnitGraph::CSR : public BaseHeteroGraph {
   }
 
   /** @brief Pin the adj_: CSRMatrix of the CSR graph. */
-  void PinMemory_() { adj_.PinMemory_(); }
+  void PinMemory_() override { adj_.PinMemory_(); }
 
   /** @brief Unpin the adj_: CSRMatrix of the CSR graph. */
   void UnpinMemory_() { adj_.UnpinMemory_(); }

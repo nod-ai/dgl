@@ -20,7 +20,11 @@
 #ifdef DGL_USE_ROCM
 #include <hip/hip_runtime.h>
 
-#define BF16_ENABLED (defined(CUDART_VERSION) && CUDART_VERSION >= 11000)
+#if CUDART_VERSION >= 11000
+#define BF16_ENABLED 1
+#else
+#define BF16_ENABLED 0
+#endif
 
 #include <hip/hip_fp16.h>
 #if BF16_ENABLED

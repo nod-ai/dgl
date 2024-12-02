@@ -23,7 +23,7 @@ namespace dgl {
 
 // Forward declaration
 class BaseHeteroGraph;
-class HeteroPickleStates;
+struct HeteroPickleStates;
 typedef std::shared_ptr<BaseHeteroGraph> HeteroGraphPtr;
 
 struct FlattenedHeteroGraph;
