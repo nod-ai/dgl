@@ -12,6 +12,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(cmake/util/Util.cmake)
 include(cmake/util/MshadowUtil.cmake)
 include(cmake/util/FindCUDA.cmake)
+include(cmake/util/FindROCm.cmake)
 
 # Options for building DGL.
 # NOTE: Please avoid editing this file to change build type. Instead, using
@@ -20,6 +21,7 @@ dgl_option(BUILD_TYPE "Type of the build: dev, dogfood or release" "dev")
 message(STATUS "Build for ${BUILD_TYPE}")
 
 dgl_option(USE_CUDA "Build with CUDA" OFF)
+dgl_option(USE_ROCM "Build with ROCM" OFF)
 dgl_option(TORCH_PYTHON_INTERPS "Python interpreter for building sub-components" python3)
 
 # Conda build related options.
@@ -109,7 +111,7 @@ dgl_feature_option(
 if (EXTERNAL_DLPACK_PATH OR EXTERNAL_DMLC_PATH OR EXTERNAL_NANOFLANN_PATH OR EXTERNAL_NANOFLANN_PATH OR EXTERNAL_METIS_PATH OR EXTERNAL_GKLIB_PATH)
   message(STATUS "Using at least one external library")
   set(USE_EXTERNAL_LIBS ON)
-  
+
   if (BUILD_CPP_TEST)
     message(FATAL_ERROR "Cannot build cpp unittests with external libraries")
   endif(BUILD_CPP_TEST)
@@ -145,6 +147,12 @@ if(USE_CUDA)
   cuda_include_directories(BEFORE "${CMAKE_SOURCE_DIR}/third_party/cccl/cub")
   cuda_include_directories(BEFORE "${CMAKE_SOURCE_DIR}/third_party/cccl/libcudacxx/include")
 endif(USE_CUDA)
+
+if(USE_ROCM)
+  message(STATUS "Build with ROCm support")
+  project(dgl C CXX)
+  include(cmake/modules/ROCm.cmake)
+endif(USE_ROCM)
 
 # initial variables
 if(NOT MSVC)
@@ -224,28 +232,35 @@ if(USE_OPENMP)
   message(STATUS "Build with OpenMP.")
 endif(USE_OPENMP)
 
+file(GLOB_RECURSE DGL_CUDA_SRC
+  src/array/cuda/*.cc
+  src/array/cuda/*.cu
+  src/array/cuda/uvm/*.cc
+  src/array/cuda/uvm/*.cu
+  src/kernel/cuda/*.cc
+  src/kernel/cuda/*.cu
+  src/partition/cuda/*.cu
+  src/runtime/cuda/*.cc
+  src/runtime/cuda/*.cu
+  src/geometry/cuda/*.cu
+  src/graph/transform/cuda/*.cu
+  src/graph/sampling/randomwalks/*.cu
+)
+
 # Configure cuda
 if(USE_CUDA)
-  file(GLOB_RECURSE DGL_CUDA_SRC
-    src/array/cuda/*.cc
-    src/array/cuda/*.cu
-    src/array/cuda/uvm/*.cc
-    src/array/cuda/uvm/*.cu
-    src/kernel/cuda/*.cc
-    src/kernel/cuda/*.cu
-    src/partition/cuda/*.cu
-    src/runtime/cuda/*.cc
-    src/runtime/cuda/*.cu
-    src/geometry/cuda/*.cu
-    src/graph/transform/cuda/*.cu
-    src/graph/sampling/randomwalks/*.cu
-  )
   list(APPEND DGL_SRC ${DGL_CUDA_SRC})
   dgl_config_cuda(DGL_LINKER_LIBS)
   cuda_add_library(dgl SHARED ${DGL_SRC})
-else(USE_CUDA)
+elseif(USE_ROCM)
+  set(DGL_HIP_SOURCE "${DGL_CUDA_SRC}")
+  set_source_files_properties(${DGL_HIP_SRC} PROPERTIES LANGUAGE HIP)
+  list(APPEND DGL_SRC ${DGL_HIP_SRC})
+  dgl_config_rocm(DGL_LINKER_LIBS)
   add_library(dgl SHARED ${DGL_SRC})
-endif(USE_CUDA)
+else()
+  add_library(dgl SHARED ${DGL_SRC})
+endif()
 
 if ((NOT MSVC) AND USE_EPOLL)
   INCLUDE(CheckIncludeFile)
@@ -293,7 +308,7 @@ if(EXTERNAL_DMLC_PATH)
   endif()
   message(STATUS "looking for dmlc headers in ${EXTERNAL_DMLC_PATH}")
   include_directories(SYSTEM ${EXTERNAL_DMLC_PATH})
-  
+
   if (NOT EXTERNAL_DMLC_LIB_PATH)
     message(FATAL_ERROR "EXTERNAL_DMLC_LIB_PATH must be set if EXTERNAL_DMLC_PATH is set")
   endif()
@@ -371,21 +386,26 @@ endif(EXTERNAL_METIS_PATH)
 
 # Avoid exposing third-party symbols when using DGL as a library.
 if((NOT MSVC) AND (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin"))
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wl,--exclude-libs,ALL")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wl,--exclude-libs,ALL")
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--exclude-libs,ALL")
 endif()
 
-# Compile gpu_cache
+file(GLOB gpu_cache_src
+  third_party/HugeCTR/gpu_cache/src/nv_gpu_cache.cu
+)
+# Manually build gpu_cache because CMake always builds it as shared
 if(USE_CUDA)
-  # Manually build gpu_cache because CMake always builds it as shared
-  file(GLOB gpu_cache_src
-    third_party/HugeCTR/gpu_cache/src/nv_gpu_cache.cu
-  )
   cuda_add_library(gpu_cache STATIC ${gpu_cache_src})
   target_include_directories(gpu_cache PRIVATE "third_party/HugeCTR/gpu_cache/include")
   target_include_directories(dgl PRIVATE "third_party/HugeCTR/gpu_cache/include")
   list(APPEND DGL_LINKER_LIBS gpu_cache)
   message(STATUS "Build with HugeCTR GPU embedding cache.")
+elif(USE_ROCM)
+ set_source_files_properties(${gpu_cache_src} PROPERTIES LANGUAGE HIP)
+ add_library(gpu_cache STATIC ${gpu_cache_src})
+ target_include_directories(gpu_cache PRIVATE "third_party/HugeCTR/gpu_cache/include")
+ target_include_directories(dgl PRIVATE "third_party/HugeCTR/gpu_cache/include")
+ list(APPEND DGL_LINKER_LIBS gpu_cache)
+ message(STATUS "Build with HugeCTR GPU embedding cache.")
 endif(USE_CUDA)
 
 # support PARALLEL_ALGORITHMS
@@ -407,7 +427,9 @@ endif(MSVC)
 # of the wrong version when I build everything in the same CMake process.  As
 # a result, I (BarclayII) am launching an individual CMake build for every PyTorch version.
 if(BUILD_TORCH)
+  message(STATUS "Configuring Torch build")
   file(TO_NATIVE_PATH ${CMAKE_CURRENT_BINARY_DIR} BINDIR)
+  file(TO_NATIVE_PATH ${CMAKE_CURRENT_SOURCE_DIR} SRCDIR)
   file(TO_NATIVE_PATH ${CMAKE_COMMAND} CMAKE_CMD)
   if(MSVC)
     file(TO_NATIVE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/tensoradapter/pytorch/build.bat BUILD_SCRIPT)
@@ -428,13 +450,15 @@ if(BUILD_TORCH)
       tensoradapter_pytorch
       ${CMAKE_COMMAND} -E env
       CMAKE_COMMAND=${CMAKE_CMD}
+      GENERATOR=${CMAKE_GENERATOR}
+      CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}
       CUDA_TOOLKIT_ROOT_DIR=${CUDA_TOOLKIT_ROOT_DIR}
       USE_CUDA=${USE_CUDA}
-      EXTERNAL_DMLC_LIB_PATH=${EXTERNAL_DMLC_LIB_PATH}
-      BINDIR=${CMAKE_CURRENT_BINARY_DIR}
+      USE_ROCM=${USE_ROCM}
+      BINDIR=${BINDIR}
+      SRCDIR=${SRCDIR}
       bash ${BUILD_SCRIPT} ${TORCH_PYTHON_INTERPS}
-      DEPENDS ${BUILD_SCRIPT}
-      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/tensoradapter/pytorch)
+      DEPENDS ${BUILD_SCRIPT})
   endif(MSVC)
   add_dependencies(dgl tensoradapter_pytorch)
 endif(BUILD_TORCH)
@@ -464,6 +488,7 @@ endif(BUILD_CPP_TEST)
 if(BUILD_SPARSE)
   message(STATUS "Configuring DGL sparse library")
   file(TO_NATIVE_PATH ${CMAKE_CURRENT_BINARY_DIR} BINDIR)
+  file(TO_NATIVE_PATH ${CMAKE_CURRENT_SOURCE_DIR} SRCDIR)
   file(TO_NATIVE_PATH ${CMAKE_COMMAND} CMAKE_CMD)
   get_target_property(DGL_INCLUDE_DIRS dgl INCLUDE_DIRECTORIES)
   message(STATUS "DGL include directories: ${DGL_INCLUDE_DIRS}")
@@ -492,16 +517,20 @@ if(BUILD_SPARSE)
       ALL
       ${CMAKE_COMMAND} -E env
       CMAKE_COMMAND=${CMAKE_CMD}
+      GENERATOR=${CMAKE_GENERATOR}
+      CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}
       CUDA_TOOLKIT_ROOT_DIR=${CUDA_TOOLKIT_ROOT_DIR}
       USE_CUDA=${USE_CUDA}
-      BINDIR=${CMAKE_CURRENT_BINARY_DIR}
+      USE_ROCM=${USE_ROCM}
+      BINDIR=${BINDIR}
+      SRCDIR=${SRCDIR}
       INCLUDEDIR="${DGL_INCLUDE_DIRS}"
+      EXTERNAL_DMLC_LIB_PATH=${EXTERNAL_DMLC_LIB_PATH}
       CFLAGS=${CMAKE_C_FLAGS}
       CXXFLAGS=${CMAKE_CXX_FLAGS}
       LDFLAGS=${CMAKE_SHARED_LINKER_FLAGS}
       bash ${BUILD_SCRIPT} ${TORCH_PYTHON_INTERPS}
-      DEPENDS ${BUILD_SCRIPT}
-      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/dgl_sparse)
+      DEPENDS ${BUILD_SCRIPT})
   endif(MSVC)
   add_dependencies(dgl_sparse dgl)
 endif(BUILD_SPARSE)
@@ -537,6 +566,7 @@ if(BUILD_GRAPHBOLT)
       CMAKE_COMMAND=${CMAKE_CMD}
       CUDA_TOOLKIT_ROOT_DIR=${CUDA_TOOLKIT_ROOT_DIR}
       USE_CUDA=${USE_CUDA}
+      USE_ROCM=${USE_ROCM}
       USE_LIBURING=${USE_LIBURING}
       BINDIR=${CMAKE_CURRENT_BINARY_DIR}
       CFLAGS=${CMAKE_C_FLAGS}

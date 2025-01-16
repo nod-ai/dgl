@@ -25,6 +25,9 @@ set(SPARSE_LINKER_LIBS "")
 if(USE_CUDA)
   add_definitions(-DDGL_USE_CUDA)
   enable_language(CUDA)
+elif(USE_ROCM)
+  add_definitions(-DDGL_USE_ROCM)
+  enable_language(HIP)
 endif()
 
 # For windows, define NOMINMAX to avoid conflict with std::min/max

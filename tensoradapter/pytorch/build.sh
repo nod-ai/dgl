@@ -1,31 +1,42 @@
 #!/bin/bash
 # Helper script to build tensor adapter libraries for PyTorch
-set -e
+set -euo pipefail
 
-mkdir -p build
-mkdir -p $BINDIR/tensoradapter/pytorch
-cd build
+TORCH_BINDIR="${BINDIR}/tensoradapter/pytorch"
+TORCH_SRCDIR="${SRCDIR}/tensoradapter/pytorch"
+mkdir -p "${TORCH_BINDIR}/build"
+cd "${TORCH_BINDIR}/build"
 
 if [ $(uname) = 'Darwin' ]; then
-	CPSOURCE=*.dylib
+    CPSOURCE=*.dylib
 else
-	CPSOURCE=*.so
+    CPSOURCE=*.so
 fi
 
-CMAKE_FLAGS="-DCUDA_TOOLKIT_ROOT_DIR=$CUDA_TOOLKIT_ROOT_DIR -DTORCH_CUDA_ARCH_LIST=$TORCH_CUDA_ARCH_LIST -DUSE_CUDA=$USE_CUDA"
+declare -a CMAKE_FLAGS=(
+    "-G${GENERATOR}"
+    "-DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}"
+    "-DCUDA_TOOLKIT_ROOT_DIR=${CUDA_TOOLKIT_ROOT_DIR}"
+    "-DTORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH_LIST:-}"
+    "-DUSE_CUDA=${USE_CUDA}"
+    "-DUSE_ROCM=${USE_ROCM}"
+)
+echo "TORCH CMake Flags: ${CMAKE_FLAGS[@]}"
 
 if [ $# -eq 0 ]; then
-	$CMAKE_COMMAND $CMAKE_FLAGS ..
-	make -j
-	cp -v $CPSOURCE $BINDIR/tensoradapter/pytorch
+    "${CMAKE_COMMAND}" "${CMAKE_FLAGS[@]}" "${TORCH_SRCDIR}"
+    cmake --build .
+    # CPSOURCE deliberately unquoted to expand wildcard
+    cp -v ${CPSOURCE} "${TORCH_BINDIR}"
 else
-	for PYTHON_INTERP in $@; do
-		TORCH_VER=$($PYTHON_INTERP -c 'import torch; print(torch.__version__.split("+")[0])')
-		mkdir -p $TORCH_VER
-		cd $TORCH_VER
-		$CMAKE_COMMAND $CMAKE_FLAGS -DPYTHON_INTERP=$PYTHON_INTERP ../..
-		make -j
-		cp -v $CPSOURCE $BINDIR/tensoradapter/pytorch
-		cd ..
-	done
+    for PYTHON_INTERP in "$@"; do
+        TORCH_VER="$("${PYTHON_INTERP}" -c 'import torch; print(torch.__version__.split("+")[0])')"
+        mkdir -p "${TORCH_VER}"
+        cd "${TORCH_VER}"
+        "${CMAKE_COMMAND}" "${CMAKE_FLAGS[@]}" -DPYTHON_INTERP="${PYTHON_INTERP}" "${TORCH_SRCDIR}"
+        cmake --build .
+        # CPSOURCE deliberately unquoted to expand wildcard
+        cp -v ${CPSOURCE} "${TORCH_BINDIR}"
+        cd ..
+    done
 fi
