@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 /**
  *  Copyright (c) 2020 by Contributors
  * @file array/cuda/coo2csr.cc
@@ -24,12 +25,12 @@ CSRMatrix COOToCSR(COOMatrix coo) {
 template <>
 CSRMatrix COOToCSR<kDGLCUDA, int32_t>(COOMatrix coo) {
   auto* thr_entry = runtime::CUDAThreadEntry::ThreadLocal();
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   // allocate cusparse handle if needed
   if (!thr_entry->cusparse_handle) {
-    CUSPARSE_CALL(cusparseCreate(&(thr_entry->cusparse_handle)));
+    CUSPARSE_CALL(hipsparseCreate(&(thr_entry->cusparse_handle)));
   }
-  CUSPARSE_CALL(cusparseSetStream(thr_entry->cusparse_handle, stream));
+  CUSPARSE_CALL(hipsparseSetStream(thr_entry->cusparse_handle, stream));
 
   bool row_sorted = coo.row_sorted;
   bool col_sorted = coo.col_sorted;
@@ -51,9 +52,9 @@ CSRMatrix COOToCSR<kDGLCUDA, int32_t>(COOMatrix coo) {
   NDArray indptr =
       aten::NewIdArray(coo.num_rows + 1, coo.row->ctx, coo.row->dtype.bits);
   int32_t* indptr_ptr = static_cast<int32_t*>(indptr->data);
-  CUSPARSE_CALL(cusparseXcoo2csr(
+  CUSPARSE_CALL(hipsparseXcoo2csr(
       thr_entry->cusparse_handle, coo.row.Ptr<int32_t>(), nnz, coo.num_rows,
-      indptr_ptr, CUSPARSE_INDEX_BASE_ZERO));
+      indptr_ptr, HIPSPARSE_INDEX_BASE_ZERO));
 
   return CSRMatrix(
       coo.num_rows, coo.num_cols, indptr, coo.col, coo.data, col_sorted);
@@ -101,7 +102,7 @@ template <>
 CSRMatrix COOToCSR<kDGLCUDA, int64_t>(COOMatrix coo) {
   const auto& ctx = coo.row->ctx;
   const auto nbits = coo.row->dtype.bits;
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   bool row_sorted = coo.row_sorted;
   bool col_sorted = coo.col_sorted;
   if (!row_sorted) {

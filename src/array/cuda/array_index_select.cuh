@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 /**
  *  Copyright (c) 2021-2022 by Contributors
  * @file array/cuda/array_index_select.cuh

@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 /**
  *   Copyright (c) 2022, NVIDIA CORPORATION.
  *
@@ -78,7 +79,7 @@ std::tuple<IdArray, IdArray, IdArray> _ComputePrefixSums(
 template <DGLDeviceType XPU, typename IdType>
 void _Merge(
     IdType** arrs, IdType* prefix, IdType* offset, IdType* out, int64_t n_arrs,
-    int n_elms, DGLContext ctx, DGLDataType dtype, cudaStream_t stream) {
+    int n_elms, DGLContext ctx, DGLDataType dtype, hipStream_t stream) {
   auto device = runtime::DeviceAPI::Get(ctx);
   int nt = 256;
   int nb = (n_elms + nt - 1) / nt;
@@ -99,7 +100,7 @@ void _Merge(
 
 template <DGLDeviceType XPU, typename IdType>
 COOMatrix DisjointUnionCoo(const std::vector<COOMatrix>& coos) {
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   auto device = runtime::DeviceAPI::Get(coos[0].row->ctx);
   uint64_t src_offset = 0, dst_offset = 0;
   bool has_data = false;

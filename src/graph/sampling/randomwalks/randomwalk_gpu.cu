@@ -1,16 +1,17 @@
+#include "hip/hip_runtime.h"
 /**
  *  Copyright (c) 2021-2022 by Contributors
  * @file graph/sampling/randomwalk_gpu.cu
  * @brief CUDA random walk sampleing
  */
 
-#include <curand_kernel.h>
+#include <hiprand/hiprand_kernel.h>
 #include <dgl/array.h>
 #include <dgl/base_heterograph.h>
 #include <dgl/random.h>
 #include <dgl/runtime/device_api.h>
 
-#include <cub/cub.cuh>
+#include <hipcub/hipcub.hpp>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -48,10 +49,10 @@ __global__ void _RandomWalkKernel(
   int64_t last_idx =
       min(static_cast<int64_t>(blockIdx.x + 1) * TILE_SIZE, num_seeds);
   int64_t trace_length = (max_num_steps + 1);
-  curandState rng;
+  hiprandState rng;
   // reference:
-  //     https://docs.nvidia.com/cuda/curand/device-api-overview.html#performance-notes
-  curand_init(rand_seed + idx, 0, 0, &rng);
+  //     https://docs.nvidia.com/cuda/hiprand/device-api-overview.html#performance-notes
+  hiprand_init(rand_seed + idx, 0, 0, &rng);
 
   while (idx < last_idx) {
     IdType curr = seed_data[idx];
@@ -68,18 +69,18 @@ __global__ void _RandomWalkKernel(
       if (deg == 0) {  // the degree is zero
         break;
       }
-      const int64_t num = curand(&rng) % deg;
+      const int64_t num = hiprand(&rng) % deg;
       IdType pick = graph.in_cols[in_row_start + num];
       IdType eid =
           (graph.data ? graph.data[in_row_start + num] : in_row_start + num);
       *traces_data_ptr = pick;
       *eids_data_ptr = eid;
       if ((restart_prob_size > 1) &&
-          (curand_uniform(&rng) < restart_prob_data[step_idx])) {
+          (hiprand_uniform(&rng) < restart_prob_data[step_idx])) {
         break;
       } else if (
           (restart_prob_size == 1) &&
-          (curand_uniform(&rng) < restart_prob_data[0])) {
+          (hiprand_uniform(&rng) < restart_prob_data[0])) {
         break;
       }
       ++traces_data_ptr;
@@ -107,10 +108,10 @@ __global__ void _RandomWalkBiasedKernel(
   int64_t last_idx =
       min(static_cast<int64_t>(blockIdx.x + 1) * TILE_SIZE, num_seeds);
   int64_t trace_length = (max_num_steps + 1);
-  curandState rng;
+  hiprandState rng;
   // reference:
-  //     https://docs.nvidia.com/cuda/curand/device-api-overview.html#performance-notes
-  curand_init(rand_seed + idx, 0, 0, &rng);
+  //     https://docs.nvidia.com/cuda/hiprand/device-api-overview.html#performance-notes
+  hiprand_init(rand_seed + idx, 0, 0, &rng);
 
   while (idx < last_idx) {
     IdType curr = seed_data[idx];
@@ -133,9 +134,9 @@ __global__ void _RandomWalkBiasedKernel(
       const FloatType *prob = probs[metapath_id];
       int64_t num;
       if (prob == nullptr) {
-        num = curand(&rng) % deg;
+        num = hiprand(&rng) % deg;
       } else {
-        auto rnd_sum_w = prob_sum[curr] * curand_uniform(&rng);
+        auto rnd_sum_w = prob_sum[curr] * hiprand_uniform(&rng);
         FloatType sum_w{0.};
         for (num = 0; num < deg; ++num) {
           sum_w += prob[in_row_start + num];
@@ -149,11 +150,11 @@ __global__ void _RandomWalkBiasedKernel(
       *traces_data_ptr = pick;
       *eids_data_ptr = eid;
       if ((restart_prob_size > 1) &&
-          (curand_uniform(&rng) < restart_prob_data[step_idx])) {
+          (hiprand_uniform(&rng) < restart_prob_data[step_idx])) {
         break;
       } else if (
           (restart_prob_size == 1) &&
-          (curand_uniform(&rng) < restart_prob_data[0])) {
+          (hiprand_uniform(&rng) < restart_prob_data[0])) {
         break;
       }
       ++traces_data_ptr;
@@ -202,7 +203,7 @@ std::pair<IdArray, IdArray> RandomWalkUniform(
                          : nullptr);
   }
   // use cuda stream from local thread
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   auto device = DeviceAPI::Get(ctx);
   auto d_graphs = static_cast<GraphKernelData<IdType> *>(device->AllocWorkspace(
       ctx, (num_etypes) * sizeof(GraphKernelData<IdType>)));
@@ -263,7 +264,7 @@ std::pair<IdArray, IdArray> RandomWalkBiased(
   IdType *traces_data = traces.Ptr<IdType>();
   IdType *eids_data = eids.Ptr<IdType>();
 
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   auto device = DeviceAPI::Get(ctx);
   // new probs and prob sums pointers
   assert(num_etypes == static_cast<int64_t>(prob.size()));
@@ -297,11 +298,11 @@ std::pair<IdArray, IdArray> RandomWalkBiased(
     // calculate the sum of the neighbor weights
     const IdType *d_offsets = static_cast<const IdType *>(csr.indptr->data);
     size_t temp_storage_size = 0;
-    CUDA_CALL(cub::DeviceSegmentedReduce::Sum(
+    CUDA_CALL(hipcub::DeviceSegmentedReduce::Sum(
         nullptr, temp_storage_size, probs[etype], prob_sums[etype],
         num_segments, d_offsets, d_offsets + 1, stream));
     void *temp_storage = device->AllocWorkspace(ctx, temp_storage_size);
-    CUDA_CALL(cub::DeviceSegmentedReduce::Sum(
+    CUDA_CALL(hipcub::DeviceSegmentedReduce::Sum(
         temp_storage, temp_storage_size, probs[etype], prob_sums[etype],
         num_segments, d_offsets, d_offsets + 1, stream));
     device->FreeWorkspace(ctx, temp_storage);
@@ -396,7 +397,7 @@ std::pair<IdArray, IdArray> RandomWalkWithRestart(
   auto device = dgl::runtime::DeviceAPI::Get(device_ctx);
 
   // use cuda stream from local thread
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   device->CopyDataFromTo(
       &restart_prob, 0, restart_prob_array.Ptr<double>(), 0, sizeof(double),
       DGLContext{kDGLCPU, 0}, device_ctx, restart_prob_array->dtype);
@@ -449,7 +450,7 @@ std::tuple<IdArray, IdArray, IdArray> SelectPinSageNeighbors(
   const int64_t num_dst_nodes = (dst->shape[0] / num_samples_per_node);
   auto ctx = src->ctx;
   // use cuda stream from local thread
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   auto frequency_hashmap = FrequencyHashmap<IdxType>(
       num_dst_nodes, num_samples_per_node, ctx, stream);
   auto ret = frequency_hashmap.Topk(

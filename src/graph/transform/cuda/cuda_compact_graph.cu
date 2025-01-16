@@ -18,7 +18,7 @@
  * all given graphs with the same set of nodes.
  */
 
-#include <cuda_runtime.h>
+#include <hip/hip_runtime.h>
 #include <dgl/immutable_graph.h>
 #include <dgl/runtime/device_api.h>
 
@@ -55,10 +55,10 @@ template <typename IdType>
 void BuildNodeMaps(
     const std::vector<IdArray> &input_nodes,
     DeviceNodeMap<IdType> *const node_maps, int64_t *const count_unique_device,
-    std::vector<IdArray> *const unique_nodes_device, cudaStream_t stream) {
+    std::vector<IdArray> *const unique_nodes_device, hipStream_t stream) {
   const int64_t num_ntypes = static_cast<int64_t>(input_nodes.size());
 
-  CUDA_CALL(cudaMemsetAsync(
+  CUDA_CALL(hipMemsetAsync(
       count_unique_device, 0, num_ntypes * sizeof(*count_unique_device),
       stream));
 
@@ -81,7 +81,7 @@ std::pair<std::vector<HeteroGraphPtr>, std::vector<IdArray>> CompactGraphsGPU(
     const std::vector<IdArray> &always_preserve) {
   const auto &ctx = graphs[0]->Context();
   auto device = runtime::DeviceAPI::Get(ctx);
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
 
   CHECK_EQ(ctx.device_type, kDGLCUDA);
 

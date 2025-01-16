@@ -7,7 +7,7 @@
 #ifndef DGL_ARRAY_CUDA_CUSPARSE_DISPATCHER_CUH_
 #define DGL_ARRAY_CUDA_CUSPARSE_DISPATCHER_CUH_
 
-#include <cusparse.h>
+#include <hipsparse/hipsparse.h>
 #include <dgl/runtime/c_runtime_api.h>
 
 #include "bf16.cuh"
@@ -20,70 +20,70 @@ namespace aten {
 template <typename DType>
 struct CSRGEMM {
   template <typename... Args>
-  static inline cusparseStatus_t bufferSizeExt(Args... args) {
+  static inline hipsparseStatus_t bufferSizeExt(Args... args) {
     BUG_IF_FAIL(false) << "This piece of code should not be reached.";
-    return static_cast<cusparseStatus_t>(0);
+    return static_cast<hipsparseStatus_t>(0);
   }
 
   template <typename... Args>
-  static inline cusparseStatus_t nnz(Args... args) {
-    return cusparseXcsrgemm2Nnz(args...);
+  static inline hipsparseStatus_t nnz(Args... args) {
+    return hipsparseXcsrgemm2Nnz(args...);
   }
 
   template <typename... Args>
-  static inline cusparseStatus_t compute(Args... args) {
+  static inline hipsparseStatus_t compute(Args... args) {
     BUG_IF_FAIL(false) << "This piece of code should not be reached.";
-    return static_cast<cusparseStatus_t>(0);
+    return static_cast<hipsparseStatus_t>(0);
   }
 };
 
 template <>
 struct CSRGEMM<__half> {
   template <typename... Args>
-  static inline cusparseStatus_t bufferSizeExt(Args... args) {
+  static inline hipsparseStatus_t bufferSizeExt(Args... args) {
     // TODO(ndickson): There is no cusparseHcsrgemm2_bufferSizeExt, so a
     // different implementation would be required.
     LOG(FATAL) << "CSRGEMM::bufferSizeExt does not support dtype half (FP16).";
-    return static_cast<cusparseStatus_t>(0);
+    return static_cast<hipsparseStatus_t>(0);
   }
 
   template <typename... Args>
-  static inline cusparseStatus_t nnz(Args... args) {
-    return cusparseXcsrgemm2Nnz(args...);
+  static inline hipsparseStatus_t nnz(Args... args) {
+    return hipsparseXcsrgemm2Nnz(args...);
   }
 
   template <typename... Args>
-  static inline cusparseStatus_t compute(Args... args) {
+  static inline hipsparseStatus_t compute(Args... args) {
     // TODO(ndickson): There is no cusparseHcsrgemm2, so a different
     // implementation would be required.
     LOG(FATAL) << "CSRGEMM::compute does not support dtype half (FP16).";
-    return static_cast<cusparseStatus_t>(0);
+    return static_cast<hipsparseStatus_t>(0);
   }
 };
 
 #if BF16_ENABLED
 template <>
-struct CSRGEMM<__nv_bfloat16> {
+struct CSRGEMM<__hip_bfloat16> {
   template <typename... Args>
-  static inline cusparseStatus_t bufferSizeExt(Args... args) {
+  static inline hipsparseStatus_t bufferSizeExt(Args... args) {
     // TODO(ndickson): There is no cusparseHcsrgemm2_bufferSizeExt, so a
     // different implementation would be required.
     LOG(FATAL)
         << "CSRGEMM::bufferSizeExt does not support dtype bfloat16 (BF16).";
-    return static_cast<cusparseStatus_t>(0);
+    return static_cast<hipsparseStatus_t>(0);
   }
 
   template <typename... Args>
-  static inline cusparseStatus_t nnz(Args... args) {
-    return cusparseXcsrgemm2Nnz(args...);
+  static inline hipsparseStatus_t nnz(Args... args) {
+    return hipsparseXcsrgemm2Nnz(args...);
   }
 
   template <typename... Args>
-  static inline cusparseStatus_t compute(Args... args) {
+  static inline hipsparseStatus_t compute(Args... args) {
     // TODO(ndickson): There is no cusparseHcsrgemm2, so a different
     // implementation would be required.
     LOG(FATAL) << "CSRGEMM::compute does not support dtype bfloat16 (BF16).";
-    return static_cast<cusparseStatus_t>(0);
+    return static_cast<hipsparseStatus_t>(0);
   }
 };
 #endif  // BF16_ENABLED
@@ -91,36 +91,36 @@ struct CSRGEMM<__nv_bfloat16> {
 template <>
 struct CSRGEMM<float> {
   template <typename... Args>
-  static inline cusparseStatus_t bufferSizeExt(Args... args) {
-    return cusparseScsrgemm2_bufferSizeExt(args...);
+  static inline hipsparseStatus_t bufferSizeExt(Args... args) {
+    return hipsparseScsrgemm2_bufferSizeExt(args...);
   }
 
   template <typename... Args>
-  static inline cusparseStatus_t nnz(Args... args) {
-    return cusparseXcsrgemm2Nnz(args...);
+  static inline hipsparseStatus_t nnz(Args... args) {
+    return hipsparseXcsrgemm2Nnz(args...);
   }
 
   template <typename... Args>
-  static inline cusparseStatus_t compute(Args... args) {
-    return cusparseScsrgemm2(args...);
+  static inline hipsparseStatus_t compute(Args... args) {
+    return hipsparseScsrgemm2(args...);
   }
 };
 
 template <>
 struct CSRGEMM<double> {
   template <typename... Args>
-  static inline cusparseStatus_t bufferSizeExt(Args... args) {
-    return cusparseDcsrgemm2_bufferSizeExt(args...);
+  static inline hipsparseStatus_t bufferSizeExt(Args... args) {
+    return hipsparseDcsrgemm2_bufferSizeExt(args...);
   }
 
   template <typename... Args>
-  static inline cusparseStatus_t nnz(Args... args) {
-    return cusparseXcsrgemm2Nnz(args...);
+  static inline hipsparseStatus_t nnz(Args... args) {
+    return hipsparseXcsrgemm2Nnz(args...);
   }
 
   template <typename... Args>
-  static inline cusparseStatus_t compute(Args... args) {
-    return cusparseDcsrgemm2(args...);
+  static inline hipsparseStatus_t compute(Args... args) {
+    return hipsparseDcsrgemm2(args...);
   }
 };
 
@@ -128,70 +128,70 @@ struct CSRGEMM<double> {
 template <typename DType>
 struct CSRGEAM {
   template <typename... Args>
-  static inline cusparseStatus_t bufferSizeExt(Args... args) {
+  static inline hipsparseStatus_t bufferSizeExt(Args... args) {
     BUG_IF_FAIL(false) << "This piece of code should not be reached.";
-    return static_cast<cusparseStatus_t>(0);
+    return static_cast<hipsparseStatus_t>(0);
   }
 
   template <typename... Args>
-  static inline cusparseStatus_t nnz(Args... args) {
-    return cusparseXcsrgeam2Nnz(args...);
+  static inline hipsparseStatus_t nnz(Args... args) {
+    return hipsparseXcsrgeam2Nnz(args...);
   }
 
   template <typename... Args>
-  static inline cusparseStatus_t compute(Args... args) {
+  static inline hipsparseStatus_t compute(Args... args) {
     BUG_IF_FAIL(false) << "This piece of code should not be reached.";
-    return static_cast<cusparseStatus_t>(0);
+    return static_cast<hipsparseStatus_t>(0);
   }
 };
 
 template <>
 struct CSRGEAM<__half> {
   template <typename... Args>
-  static inline cusparseStatus_t bufferSizeExt(Args... args) {
+  static inline hipsparseStatus_t bufferSizeExt(Args... args) {
     // TODO(ndickson): There is no cusparseHcsrgeam2_bufferSizeExt, so a
     // different implementation would be required.
     LOG(FATAL) << "CSRGEAM::bufferSizeExt does not support dtype half (FP16).";
-    return static_cast<cusparseStatus_t>(0);
+    return static_cast<hipsparseStatus_t>(0);
   }
 
   template <typename... Args>
-  static inline cusparseStatus_t nnz(Args... args) {
-    return cusparseXcsrgeam2Nnz(args...);
+  static inline hipsparseStatus_t nnz(Args... args) {
+    return hipsparseXcsrgeam2Nnz(args...);
   }
 
   template <typename... Args>
-  static inline cusparseStatus_t compute(Args... args) {
+  static inline hipsparseStatus_t compute(Args... args) {
     // TODO(ndickson): There is no cusparseHcsrgeam2, so a different
     // implementation would be required.
     LOG(FATAL) << "CSRGEAM::compute does not support dtype half (FP16).";
-    return static_cast<cusparseStatus_t>(0);
+    return static_cast<hipsparseStatus_t>(0);
   }
 };
 
 #if BF16_ENABLED
 template <>
-struct CSRGEAM<__nv_bfloat16> {
+struct CSRGEAM<__hip_bfloat16> {
   template <typename... Args>
-  static inline cusparseStatus_t bufferSizeExt(Args... args) {
+  static inline hipsparseStatus_t bufferSizeExt(Args... args) {
     // TODO(ndickson): There is no cusparseHcsrgeam2_bufferSizeExt, so a
     // different implementation would be required.
     LOG(FATAL)
         << "CSRGEAM::bufferSizeExt does not support dtype bfloat16 (BF16).";
-    return static_cast<cusparseStatus_t>(0);
+    return static_cast<hipsparseStatus_t>(0);
   }
 
   template <typename... Args>
-  static inline cusparseStatus_t nnz(Args... args) {
-    return cusparseXcsrgeam2Nnz(args...);
+  static inline hipsparseStatus_t nnz(Args... args) {
+    return hipsparseXcsrgeam2Nnz(args...);
   }
 
   template <typename... Args>
-  static inline cusparseStatus_t compute(Args... args) {
+  static inline hipsparseStatus_t compute(Args... args) {
     // TODO(ndickson): There is no cusparseHcsrgeam2, so a different
     // implementation would be required.
     LOG(FATAL) << "CSRGEAM::compute does not support dtype bfloat16 (BF16).";
-    return static_cast<cusparseStatus_t>(0);
+    return static_cast<hipsparseStatus_t>(0);
   }
 };
 #endif  // BF16_ENABLED
@@ -199,36 +199,36 @@ struct CSRGEAM<__nv_bfloat16> {
 template <>
 struct CSRGEAM<float> {
   template <typename... Args>
-  static inline cusparseStatus_t bufferSizeExt(Args... args) {
-    return cusparseScsrgeam2_bufferSizeExt(args...);
+  static inline hipsparseStatus_t bufferSizeExt(Args... args) {
+    return hipsparseScsrgeam2_bufferSizeExt(args...);
   }
 
   template <typename... Args>
-  static inline cusparseStatus_t nnz(Args... args) {
-    return cusparseXcsrgeam2Nnz(args...);
+  static inline hipsparseStatus_t nnz(Args... args) {
+    return hipsparseXcsrgeam2Nnz(args...);
   }
 
   template <typename... Args>
-  static inline cusparseStatus_t compute(Args... args) {
-    return cusparseScsrgeam2(args...);
+  static inline hipsparseStatus_t compute(Args... args) {
+    return hipsparseScsrgeam2(args...);
   }
 };
 
 template <>
 struct CSRGEAM<double> {
   template <typename... Args>
-  static inline cusparseStatus_t bufferSizeExt(Args... args) {
-    return cusparseDcsrgeam2_bufferSizeExt(args...);
+  static inline hipsparseStatus_t bufferSizeExt(Args... args) {
+    return hipsparseDcsrgeam2_bufferSizeExt(args...);
   }
 
   template <typename... Args>
-  static inline cusparseStatus_t nnz(Args... args) {
-    return cusparseXcsrgeam2Nnz(args...);
+  static inline hipsparseStatus_t nnz(Args... args) {
+    return hipsparseXcsrgeam2Nnz(args...);
   }
 
   template <typename... Args>
-  static inline cusparseStatus_t compute(Args... args) {
-    return cusparseDcsrgeam2(args...);
+  static inline hipsparseStatus_t compute(Args... args) {
+    return hipsparseDcsrgeam2(args...);
   }
 };
 

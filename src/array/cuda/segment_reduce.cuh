@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 /**
  *  Copyright (c) 2020 by Contributors
  * @file array/cuda/segment_reduce.cuh
@@ -125,7 +126,7 @@ void SegmentReduce(NDArray feat, NDArray offsets, NDArray out, NDArray arg) {
   DType* out_data = out.Ptr<DType>();
   IdType* arg_data = arg.Ptr<IdType>();
 
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   int64_t n = out->shape[0];
   int64_t dim = 1;
   for (int i = 1; i < out->ndim; ++i) dim *= out->shape[i];
@@ -155,7 +156,7 @@ void ScatterAdd(NDArray feat, NDArray idx, NDArray out) {
   const IdType* idx_data = idx.Ptr<IdType>();
   DType* out_data = out.Ptr<DType>();
 
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   int64_t n = feat->shape[0];
   int64_t dim = 1;
   for (int i = 1; i < out->ndim; ++i) dim *= out->shape[i];
@@ -186,7 +187,7 @@ void UpdateGradMinMax_hetero(
     const std::vector<NDArray>& list_feat, const std::vector<NDArray>& list_idx,
     const std::vector<NDArray>& list_idx_types,
     std::vector<NDArray>* list_out) {
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   if (op == "copy_lhs" || op == "copy_rhs") {
     std::vector<std::vector<dgl_id_t>> src_dst_ntypes(
         graph->NumVertexTypes(), std::vector<dgl_id_t>());
@@ -239,7 +240,7 @@ void BackwardSegmentCmp(NDArray feat, NDArray arg, NDArray out) {
   const IdType* arg_data = arg.Ptr<IdType>();
   DType* out_data = out.Ptr<DType>();
 
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   int64_t n = feat->shape[0];
   int64_t dim = 1;
   for (int i = 1; i < out->ndim; ++i) dim *= out->shape[i];

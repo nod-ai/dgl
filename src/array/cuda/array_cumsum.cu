@@ -5,7 +5,7 @@
  */
 #include <dgl/array.h>
 
-#include <cub/cub.cuh>
+#include <hipcub/hipcub.hpp>
 
 #include "../../runtime/cuda/cuda_common.h"
 #include "./utils.h"
@@ -23,7 +23,7 @@ IdArray CumSum(IdArray array, bool prepend_zero) {
                          : aten::Full(0, 1, array->dtype.bits, array->ctx);
 
   auto device = runtime::DeviceAPI::Get(array->ctx);
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   const IdType* in_d = array.Ptr<IdType>();
   IdArray ret;
   IdType* out_d = nullptr;
@@ -36,12 +36,12 @@ IdArray CumSum(IdArray array, bool prepend_zero) {
   }
   // Allocate workspace
   size_t workspace_size = 0;
-  CUDA_CALL(cub::DeviceScan::InclusiveSum(
+  CUDA_CALL(hipcub::DeviceScan::InclusiveSum(
       nullptr, workspace_size, in_d, out_d, len, stream));
   void* workspace = device->AllocWorkspace(array->ctx, workspace_size);
 
   // Compute cumsum
-  CUDA_CALL(cub::DeviceScan::InclusiveSum(
+  CUDA_CALL(hipcub::DeviceScan::InclusiveSum(
       workspace, workspace_size, in_d, out_d, len, stream));
 
   device->FreeWorkspace(array->ctx, workspace);

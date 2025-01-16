@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 /**
  *  Copyright (c) 2021 by Contributors
  * @file ndarray_partition.h
@@ -6,7 +7,7 @@
 
 #include <dgl/runtime/device_api.h>
 
-#include <cub/cub.cuh>
+#include <hipcub/hipcub.hpp>
 
 #include "../../runtime/cuda/cuda_common.h"
 #include "../../runtime/workspace.h"
@@ -239,7 +240,7 @@ std::pair<IdArray, NDArray> GeneratePermutationFromRemainder(
 
   const auto& ctx = in_idx->ctx;
   auto device = DeviceAPI::Get(ctx);
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
 
   const int64_t num_in = in_idx->shape[0];
 
@@ -295,13 +296,13 @@ std::pair<IdArray, NDArray> GeneratePermutationFromRemainder(
     IdArray perm_in = aten::Range(0, num_in, sizeof(IdType) * 8, ctx);
 
     size_t sort_workspace_size;
-    CUDA_CALL(cub::DeviceRadixSort::SortPairs(
+    CUDA_CALL(hipcub::DeviceRadixSort::SortPairs(
         nullptr, sort_workspace_size, proc_id_in.get(), proc_id_out.get(),
         static_cast<IdType*>(perm_in->data), perm_out, num_in, 0, part_bits,
         stream));
 
     Workspace<void> sort_workspace(device, ctx, sort_workspace_size);
-    CUDA_CALL(cub::DeviceRadixSort::SortPairs(
+    CUDA_CALL(hipcub::DeviceRadixSort::SortPairs(
         sort_workspace.get(), sort_workspace_size, proc_id_in.get(),
         proc_id_out.get(), static_cast<IdType*>(perm_in->data), perm_out,
         num_in, 0, part_bits, stream));
@@ -317,7 +318,7 @@ std::pair<IdArray, NDArray> GeneratePermutationFromRemainder(
     static_assert(
         sizeof(AtomicCount) == sizeof(*out_counts),
         "AtomicCount must be the same width as int64_t for atomicAdd "
-        "in cub::DeviceHistogram::HistogramEven() to work");
+        "in hipcub::DeviceHistogram::HistogramEven() to work");
 
     // TODO(dlasalle): Once https://github.com/NVIDIA/cub/pull/287 is merged,
     // add a compile time check against the cub version to allow
@@ -327,14 +328,14 @@ std::pair<IdArray, NDArray> GeneratePermutationFromRemainder(
            "value of int.";
 
     size_t hist_workspace_size;
-    CUDA_CALL(cub::DeviceHistogram::HistogramEven(
+    CUDA_CALL(hipcub::DeviceHistogram::HistogramEven(
         nullptr, hist_workspace_size, proc_id_out.get(),
         reinterpret_cast<AtomicCount*>(out_counts), num_parts + 1,
         static_cast<IdType>(0), static_cast<IdType>(num_parts),
         static_cast<int>(num_in), stream));
 
     Workspace<void> hist_workspace(device, ctx, hist_workspace_size);
-    CUDA_CALL(cub::DeviceHistogram::HistogramEven(
+    CUDA_CALL(hipcub::DeviceHistogram::HistogramEven(
         hist_workspace.get(), hist_workspace_size, proc_id_out.get(),
         reinterpret_cast<AtomicCount*>(out_counts), num_parts + 1,
         static_cast<IdType>(0), static_cast<IdType>(num_parts),
@@ -352,7 +353,7 @@ template std::pair<IdArray, IdArray> GeneratePermutationFromRemainder<
 template <DGLDeviceType XPU, typename IdType>
 IdArray MapToLocalFromRemainder(const int num_parts, IdArray global_idx) {
   const auto& ctx = global_idx->ctx;
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
 
   if (num_parts > 1) {
     IdArray local_idx =
@@ -387,7 +388,7 @@ IdArray MapToGlobalFromRemainder(
                        << num_parts;
 
   const auto& ctx = local_idx->ctx;
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
 
   if (num_parts > 1) {
     IdArray global_idx =
@@ -423,7 +424,7 @@ std::pair<IdArray, NDArray> GeneratePermutationFromRange(
 
   const auto& ctx = in_idx->ctx;
   auto device = DeviceAPI::Get(ctx);
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
 
   const int64_t num_in = in_idx->shape[0];
 
@@ -470,13 +471,13 @@ std::pair<IdArray, NDArray> GeneratePermutationFromRange(
     IdArray perm_in = aten::Range(0, num_in, sizeof(IdType) * 8, ctx);
 
     size_t sort_workspace_size;
-    CUDA_CALL(cub::DeviceRadixSort::SortPairs(
+    CUDA_CALL(hipcub::DeviceRadixSort::SortPairs(
         nullptr, sort_workspace_size, proc_id_in.get(), proc_id_out.get(),
         static_cast<IdType*>(perm_in->data), perm_out, num_in, 0, part_bits,
         stream));
 
     Workspace<void> sort_workspace(device, ctx, sort_workspace_size);
-    CUDA_CALL(cub::DeviceRadixSort::SortPairs(
+    CUDA_CALL(hipcub::DeviceRadixSort::SortPairs(
         sort_workspace.get(), sort_workspace_size, proc_id_in.get(),
         proc_id_out.get(), static_cast<IdType*>(perm_in->data), perm_out,
         num_in, 0, part_bits, stream));
@@ -492,7 +493,7 @@ std::pair<IdArray, NDArray> GeneratePermutationFromRange(
     static_assert(
         sizeof(AtomicCount) == sizeof(*out_counts),
         "AtomicCount must be the same width as int64_t for atomicAdd "
-        "in cub::DeviceHistogram::HistogramEven() to work");
+        "in hipcub::DeviceHistogram::HistogramEven() to work");
 
     // TODO(dlasalle): Once https://github.com/NVIDIA/cub/pull/287 is merged,
     // add a compile time check against the cub version to allow
@@ -502,14 +503,14 @@ std::pair<IdArray, NDArray> GeneratePermutationFromRange(
            "value of int.";
 
     size_t hist_workspace_size;
-    CUDA_CALL(cub::DeviceHistogram::HistogramEven(
+    CUDA_CALL(hipcub::DeviceHistogram::HistogramEven(
         nullptr, hist_workspace_size, proc_id_out.get(),
         reinterpret_cast<AtomicCount*>(out_counts), num_parts + 1,
         static_cast<IdType>(0), static_cast<IdType>(num_parts),
         static_cast<int>(num_in), stream));
 
     Workspace<void> hist_workspace(device, ctx, hist_workspace_size);
-    CUDA_CALL(cub::DeviceHistogram::HistogramEven(
+    CUDA_CALL(hipcub::DeviceHistogram::HistogramEven(
         hist_workspace.get(), hist_workspace_size, proc_id_out.get(),
         reinterpret_cast<AtomicCount*>(out_counts), num_parts + 1,
         static_cast<IdType>(0), static_cast<IdType>(num_parts),
@@ -536,7 +537,7 @@ template <DGLDeviceType XPU, typename IdType, typename RangeType>
 IdArray MapToLocalFromRange(
     const int num_parts, IdArray range, IdArray global_idx) {
   const auto& ctx = global_idx->ctx;
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
 
   if (num_parts > 1 && global_idx->shape[0] > 0) {
     IdArray local_idx =
@@ -576,7 +577,7 @@ IdArray MapToGlobalFromRange(
                        << num_parts;
 
   const auto& ctx = local_idx->ctx;
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
 
   if (num_parts > 1 && local_idx->shape[0] > 0) {
     IdArray global_idx =

@@ -23,12 +23,12 @@ constexpr DGLDataType DGLDataTypeTraits<int32_t>::dtype;
 constexpr DGLDataType DGLDataTypeTraits<int64_t>::dtype;
 constexpr DGLDataType DGLDataTypeTraits<uint32_t>::dtype;
 constexpr DGLDataType DGLDataTypeTraits<uint64_t>::dtype;
-#ifdef DGL_USE_CUDA
+#ifdef DGL_USE_ROCM
 constexpr DGLDataType DGLDataTypeTraits<__half>::dtype;
 #if BF16_ENABLED
-constexpr DGLDataType DGLDataTypeTraits<__nv_bfloat16>::dtype;
+constexpr DGLDataType DGLDataTypeTraits<__hip_bfloat16>::dtype;
 #endif  // BF16_ENABLED
-#endif  // DGL_USE_CUDA
+#endif  // DGL_USE_ROCM
 constexpr DGLDataType DGLDataTypeTraits<float>::dtype;
 constexpr DGLDataType DGLDataTypeTraits<double>::dtype;
 
@@ -262,7 +262,7 @@ void NDArray::PinContainer(NDArray::Container* ptr) {
 void NDArray::UnpinContainer(NDArray::Container* ptr) {
   auto container_is_pinned = IsContainerPinned(ptr);
   // The tensor may be pinned outside of DGL via a different CUDA API,
-  // so we cannot unpin it with cudaHostUnregister.
+  // so we cannot unpin it with hipHostUnregister.
   CHECK(ptr->pinned_by_dgl_ || !container_is_pinned)
       << "Cannot unpin a tensor that is pinned outside of DGL.";
   // 1. not pinned, do nothing

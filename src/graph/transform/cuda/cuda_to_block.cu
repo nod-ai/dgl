@@ -20,7 +20,7 @@
  * Tested via python wrapper: python/dgl/path/to/to_block.py
  */
 
-#include <cuda_runtime.h>
+#include <hip/hip_runtime.h>
 #include <dgl/immutable_graph.h>
 #include <dgl/runtime/device_api.h>
 #include <dgl/runtime/tensordispatch.h>
@@ -69,10 +69,10 @@ class DeviceNodeMapMaker {
       const std::vector<IdArray>& lhs_nodes,
       const std::vector<IdArray>& rhs_nodes,
       DeviceNodeMap<IdType>* const node_maps, int64_t* const count_lhs_device,
-      std::vector<IdArray>* const lhs_device, cudaStream_t stream) {
+      std::vector<IdArray>* const lhs_device, hipStream_t stream) {
     const int64_t num_ntypes = lhs_nodes.size() + rhs_nodes.size();
 
-    CUDA_CALL(cudaMemsetAsync(
+    CUDA_CALL(hipMemsetAsync(
         count_lhs_device, 0, num_ntypes * sizeof(*count_lhs_device), stream));
 
     // possibly dublicate lhs nodes
@@ -112,7 +112,7 @@ class DeviceNodeMapMaker {
   void Make(
       const std::vector<IdArray>& lhs_nodes,
       const std::vector<IdArray>& rhs_nodes,
-      DeviceNodeMap<IdType>* const node_maps, cudaStream_t stream) {
+      DeviceNodeMap<IdType>* const node_maps, hipStream_t stream) {
     const int64_t num_ntypes = lhs_nodes.size() + rhs_nodes.size();
 
     // unique lhs nodes
@@ -155,7 +155,7 @@ struct CUDAIdsMapper {
     std::vector<int64_t>& num_nodes_per_type = *num_nodes_per_type_ptr;
     const bool generate_lhs_nodes = lhs_nodes.empty();
     auto device = runtime::DeviceAPI::Get(ctx);
-    cudaStream_t stream = runtime::getCurrentCUDAStream();
+    hipStream_t stream = runtime::getCurrentCUDAStream();
 
     // Allocate space for map creation process.
     DeviceNodeMapMaker<IdType> maker(maxNodesPerType);
@@ -168,7 +168,7 @@ struct CUDAIdsMapper {
       }
     }
 
-    cudaEvent_t copyEvent;
+    hipEvent_t copyEvent;
     NDArray new_len_tensor;
     // Populate the mappings.
     if (generate_lhs_nodes) {
@@ -179,7 +179,7 @@ struct CUDAIdsMapper {
           src_nodes, rhs_nodes, &node_maps, count_lhs_device, &lhs_nodes,
           stream);
 
-      CUDA_CALL(cudaEventCreate(&copyEvent));
+      CUDA_CALL(hipEventCreate(&copyEvent));
       if (TensorDispatcher::Global()->IsAvailable()) {
         new_len_tensor = NDArray::PinnedEmpty(
             {num_ntypes}, DGLDataTypeTraits<int64_t>::dtype,
@@ -190,11 +190,11 @@ struct CUDAIdsMapper {
             {num_ntypes}, DGLDataTypeTraits<int64_t>::dtype,
             DGLContext{kDGLCPU, 0});
       }
-      CUDA_CALL(cudaMemcpyAsync(
+      CUDA_CALL(hipMemcpyAsync(
           new_len_tensor->data, count_lhs_device,
           sizeof(*num_nodes_per_type.data()) * num_ntypes,
-          cudaMemcpyDeviceToHost, stream));
-      CUDA_CALL(cudaEventRecord(copyEvent, stream));
+          hipMemcpyDeviceToHost, stream));
+      CUDA_CALL(hipEventRecord(copyEvent, stream));
 
       device->FreeWorkspace(ctx, count_lhs_device);
     } else {
@@ -209,8 +209,8 @@ struct CUDAIdsMapper {
 
     if (generate_lhs_nodes) {
       // wait for the previous copy
-      CUDA_CALL(cudaEventSynchronize(copyEvent));
-      CUDA_CALL(cudaEventDestroy(copyEvent));
+      CUDA_CALL(hipEventSynchronize(copyEvent));
+      CUDA_CALL(hipEventDestroy(copyEvent));
 
       // Resize lhs nodes.
       for (int64_t ntype = 0; ntype < num_ntypes; ++ntype) {

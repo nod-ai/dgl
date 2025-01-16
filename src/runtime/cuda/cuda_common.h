@@ -6,10 +6,10 @@
 #ifndef DGL_RUNTIME_CUDA_CUDA_COMMON_H_
 #define DGL_RUNTIME_CUDA_CUDA_COMMON_H_
 
-#include <cublas_v2.h>
-#include <cuda_runtime.h>
-#include <curand.h>
-#include <cusparse.h>
+#include <hipblas/hipblas.h>
+#include <hip/hip_runtime.h>
+#include <hiprand.h>
+#include <hipsparse/hipsparse.h>
 #include <dgl/runtime/packed_func.h>
 
 #include <memory>
@@ -26,7 +26,7 @@ namespace runtime {
 
   runtime::CUDAWorkspaceAllocator allocator(ctx);
   const auto stream = runtime::getCurrentCUDAStream();
-  const auto exec_policy = thrust::cuda::par_nosync(allocator).on(stream);
+  const auto exec_policy = thrust::hip::par_nosync(allocator).on(stream);
 
   now, one can pass exec_policy to thrust functions
 
@@ -79,112 +79,112 @@ inline bool is_zero<dim3>(dim3 size) {
 
 #define CUDA_DRIVER_CALL(x)                                             \
   {                                                                     \
-    CUresult result = x;                                                \
-    if (result != CUDA_SUCCESS && result != CUDA_ERROR_DEINITIALIZED) { \
+    hipError_t result = x;                                                \
+    if (result != hipSuccess && result != hipErrorDeinitialized) { \
       const char* msg;                                                  \
-      cuGetErrorName(result, &msg);                                     \
+      hipDrvGetErrorName(result, &msg);                                     \
       LOG(FATAL) << "CUDAError: " #x " failed with error: " << msg;     \
     }                                                                   \
   }
 
 #define CUDA_CALL(func)                                      \
   {                                                          \
-    cudaError_t e = (func);                                  \
-    CHECK(e == cudaSuccess || e == cudaErrorCudartUnloading) \
-        << "CUDA: " << cudaGetErrorString(e);                \
+    hipError_t e = (func);                                  \
+    CHECK(e == hipSuccess || e == hipErrorDeinitialized) \
+        << "CUDA: " << hipGetErrorString(e);                \
   }
 
 #define CUDA_KERNEL_CALL(kernel, nblks, nthrs, shmem, stream, ...)            \
   {                                                                           \
     if (!dgl::runtime::is_zero((nblks)) && !dgl::runtime::is_zero((nthrs))) { \
       (kernel)<<<(nblks), (nthrs), (shmem), (stream)>>>(__VA_ARGS__);         \
-      cudaError_t e = cudaGetLastError();                                     \
-      CHECK(e == cudaSuccess || e == cudaErrorCudartUnloading)                \
-          << "CUDA kernel launch error: " << cudaGetErrorString(e);           \
+      hipError_t e = hipGetLastError();                                     \
+      CHECK(e == hipSuccess || e == hipErrorDeinitialized)                \
+          << "CUDA kernel launch error: " << hipGetErrorString(e);           \
     }                                                                         \
   }
 
 #define CUSPARSE_CALL(func)                                         \
   {                                                                 \
-    cusparseStatus_t e = (func);                                    \
-    CHECK(e == CUSPARSE_STATUS_SUCCESS) << "CUSPARSE ERROR: " << e; \
+    hipsparseStatus_t e = (func);                                    \
+    CHECK(e == HIPSPARSE_STATUS_SUCCESS) << "CUSPARSE ERROR: " << e; \
   }
 
 #define CUBLAS_CALL(func)                                       \
   {                                                             \
-    cublasStatus_t e = (func);                                  \
-    CHECK(e == CUBLAS_STATUS_SUCCESS) << "CUBLAS ERROR: " << e; \
+    hipblasStatus_t e = (func);                                  \
+    CHECK(e == HIPBLAS_STATUS_SUCCESS) << "CUBLAS ERROR: " << e; \
   }
 
 #define CURAND_CALL(func)                                                      \
   {                                                                            \
-    curandStatus_t e = (func);                                                 \
-    CHECK(e == CURAND_STATUS_SUCCESS)                                          \
+    hiprandStatus_t e = (func);                                                 \
+    CHECK(e == HIPRAND_STATUS_SUCCESS)                                          \
         << "CURAND Error: " << dgl::runtime::curandGetErrorString(e) << " at " \
         << __FILE__ << ":" << __LINE__;                                        \
   }
 
-inline const char* curandGetErrorString(curandStatus_t error) {
+inline const char* curandGetErrorString(hiprandStatus_t error) {
   switch (error) {
-    case CURAND_STATUS_SUCCESS:
-      return "CURAND_STATUS_SUCCESS";
-    case CURAND_STATUS_VERSION_MISMATCH:
-      return "CURAND_STATUS_VERSION_MISMATCH";
-    case CURAND_STATUS_NOT_INITIALIZED:
-      return "CURAND_STATUS_NOT_INITIALIZED";
-    case CURAND_STATUS_ALLOCATION_FAILED:
-      return "CURAND_STATUS_ALLOCATION_FAILED";
-    case CURAND_STATUS_TYPE_ERROR:
-      return "CURAND_STATUS_TYPE_ERROR";
-    case CURAND_STATUS_OUT_OF_RANGE:
-      return "CURAND_STATUS_OUT_OF_RANGE";
-    case CURAND_STATUS_LENGTH_NOT_MULTIPLE:
-      return "CURAND_STATUS_LENGTH_NOT_MULTIPLE";
-    case CURAND_STATUS_DOUBLE_PRECISION_REQUIRED:
-      return "CURAND_STATUS_DOUBLE_PRECISION_REQUIRED";
-    case CURAND_STATUS_LAUNCH_FAILURE:
-      return "CURAND_STATUS_LAUNCH_FAILURE";
-    case CURAND_STATUS_PREEXISTING_FAILURE:
-      return "CURAND_STATUS_PREEXISTING_FAILURE";
-    case CURAND_STATUS_INITIALIZATION_FAILED:
-      return "CURAND_STATUS_INITIALIZATION_FAILED";
-    case CURAND_STATUS_ARCH_MISMATCH:
-      return "CURAND_STATUS_ARCH_MISMATCH";
-    case CURAND_STATUS_INTERNAL_ERROR:
-      return "CURAND_STATUS_INTERNAL_ERROR";
+    case HIPRAND_STATUS_SUCCESS:
+      return "HIPRAND_STATUS_SUCCESS";
+    case HIPRAND_STATUS_VERSION_MISMATCH:
+      return "HIPRAND_STATUS_VERSION_MISMATCH";
+    case HIPRAND_STATUS_NOT_INITIALIZED:
+      return "HIPRAND_STATUS_NOT_INITIALIZED";
+    case HIPRAND_STATUS_ALLOCATION_FAILED:
+      return "HIPRAND_STATUS_ALLOCATION_FAILED";
+    case HIPRAND_STATUS_TYPE_ERROR:
+      return "HIPRAND_STATUS_TYPE_ERROR";
+    case HIPRAND_STATUS_OUT_OF_RANGE:
+      return "HIPRAND_STATUS_OUT_OF_RANGE";
+    case HIPRAND_STATUS_LENGTH_NOT_MULTIPLE:
+      return "HIPRAND_STATUS_LENGTH_NOT_MULTIPLE";
+    case HIPRAND_STATUS_DOUBLE_PRECISION_REQUIRED:
+      return "HIPRAND_STATUS_DOUBLE_PRECISION_REQUIRED";
+    case HIPRAND_STATUS_LAUNCH_FAILURE:
+      return "HIPRAND_STATUS_LAUNCH_FAILURE";
+    case HIPRAND_STATUS_PREEXISTING_FAILURE:
+      return "HIPRAND_STATUS_PREEXISTING_FAILURE";
+    case HIPRAND_STATUS_INITIALIZATION_FAILED:
+      return "HIPRAND_STATUS_INITIALIZATION_FAILED";
+    case HIPRAND_STATUS_ARCH_MISMATCH:
+      return "HIPRAND_STATUS_ARCH_MISMATCH";
+    case HIPRAND_STATUS_INTERNAL_ERROR:
+      return "HIPRAND_STATUS_INTERNAL_ERROR";
   }
   // To suppress compiler warning.
-  return "Unrecognized curand error string";
+  return "Unrecognized hiprand error string";
 }
 
 /**
- * @brief Cast data type to cudaDataType_t.
+ * @brief Cast data type to hipDataType.
  */
 template <typename T>
 struct cuda_dtype {
-  static constexpr cudaDataType_t value = CUDA_R_32F;
+  static constexpr hipDataType value = HIP_R_32F;
 };
 
 template <>
 struct cuda_dtype<__half> {
-  static constexpr cudaDataType_t value = CUDA_R_16F;
+  static constexpr hipDataType value = HIP_R_16F;
 };
 
 #if BF16_ENABLED
 template <>
-struct cuda_dtype<__nv_bfloat16> {
-  static constexpr cudaDataType_t value = CUDA_R_16BF;
+struct cuda_dtype<__hip_bfloat16> {
+  static constexpr hipDataType value = HIP_R_16BF;
 };
 #endif  // BF16_ENABLED
 
 template <>
 struct cuda_dtype<float> {
-  static constexpr cudaDataType_t value = CUDA_R_32F;
+  static constexpr hipDataType value = HIP_R_32F;
 };
 
 template <>
 struct cuda_dtype<double> {
-  static constexpr cudaDataType_t value = CUDA_R_64F;
+  static constexpr hipDataType value = HIP_R_64F;
 };
 
 /*
@@ -202,7 +202,7 @@ struct accum_dtype<__half> {
 
 #if BF16_ENABLED
 template <>
-struct accum_dtype<__nv_bfloat16> {
+struct accum_dtype<__hip_bfloat16> {
   typedef float type;
 };
 #endif  // BF16_ENABLED
@@ -219,21 +219,21 @@ struct accum_dtype<double> {
 
 #if CUDART_VERSION >= 11000
 /**
- * @brief Cast index data type to cusparseIndexType_t.
+ * @brief Cast index data type to hipsparseIndexType_t.
  */
 template <typename T>
 struct cusparse_idtype {
-  static constexpr cusparseIndexType_t value = CUSPARSE_INDEX_32I;
+  static constexpr hipsparseIndexType_t value = HIPSPARSE_INDEX_32I;
 };
 
 template <>
 struct cusparse_idtype<int32_t> {
-  static constexpr cusparseIndexType_t value = CUSPARSE_INDEX_32I;
+  static constexpr hipsparseIndexType_t value = HIPSPARSE_INDEX_32I;
 };
 
 template <>
 struct cusparse_idtype<int64_t> {
-  static constexpr cusparseIndexType_t value = CUSPARSE_INDEX_64I;
+  static constexpr hipsparseIndexType_t value = HIPSPARSE_INDEX_64I;
 };
 #endif
 
@@ -241,9 +241,9 @@ struct cusparse_idtype<int64_t> {
 class CUDAThreadEntry {
  public:
   /** @brief The cusparse handler */
-  cusparseHandle_t cusparse_handle{nullptr};
+  hipsparseHandle_t cusparse_handle{nullptr};
   /** @brief The cublas handler */
-  cublasHandle_t cublas_handle{nullptr};
+  hipblasHandle_t cublas_handle{nullptr};
   /** @brief thread local pool*/
   WorkspacePool pool;
   /** @brief constructor */
@@ -253,7 +253,7 @@ class CUDAThreadEntry {
 };
 
 /** @brief Get the current CUDA stream */
-cudaStream_t getCurrentCUDAStream();
+hipStream_t getCurrentCUDAStream();
 }  // namespace runtime
 }  // namespace dgl
 #endif  // DGL_RUNTIME_CUDA_CUDA_COMMON_H_

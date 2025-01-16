@@ -32,21 +32,21 @@ std::pair<CSRMatrix, NDArray> CusparseCsrgeam2(
   auto ctx = A.indptr->ctx;
   auto device = runtime::DeviceAPI::Get(ctx);
   auto* thr_entry = runtime::CUDAThreadEntry::ThreadLocal();
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   const DType* A_weights = A_weights_array.Ptr<DType>();
   const DType* B_weights = B_weights_array.Ptr<DType>();
   // allocate cusparse handle if needed
   if (!thr_entry->cusparse_handle)
-    CUSPARSE_CALL(cusparseCreate(&(thr_entry->cusparse_handle)));
-  CUSPARSE_CALL(cusparseSetStream(thr_entry->cusparse_handle, stream));
+    CUSPARSE_CALL(hipsparseCreate(&(thr_entry->cusparse_handle)));
+  CUSPARSE_CALL(hipsparseSetStream(thr_entry->cusparse_handle, stream));
 
-  cusparseMatDescr_t matA, matB, matC;
-  CUSPARSE_CALL(cusparseCreateMatDescr(&matA));
-  CUSPARSE_CALL(cusparseCreateMatDescr(&matB));
-  CUSPARSE_CALL(cusparseCreateMatDescr(&matC));
+  hipsparseMatDescr_t matA, matB, matC;
+  CUSPARSE_CALL(hipsparseCreateMatDescr(&matA));
+  CUSPARSE_CALL(hipsparseCreateMatDescr(&matB));
+  CUSPARSE_CALL(hipsparseCreateMatDescr(&matC));
 
-  cusparseSetPointerMode(
-      thr_entry->cusparse_handle, CUSPARSE_POINTER_MODE_HOST);
+  hipsparseSetPointerMode(
+      thr_entry->cusparse_handle, HIPSPARSE_POINTER_MODE_HOST);
   size_t workspace_size = 0;
   /* prepare output C */
   IdArray dC_csrOffsets = IdArray::Empty({m + 1}, A.indptr->dtype, ctx);
@@ -81,9 +81,9 @@ std::pair<CSRMatrix, NDArray> CusparseCsrgeam2(
 
   device->FreeWorkspace(ctx, workspace);
   // destroy matrix/vector descriptors
-  CUSPARSE_CALL(cusparseDestroyMatDescr(matA));
-  CUSPARSE_CALL(cusparseDestroyMatDescr(matB));
-  CUSPARSE_CALL(cusparseDestroyMatDescr(matC));
+  CUSPARSE_CALL(hipsparseDestroyMatDescr(matA));
+  CUSPARSE_CALL(hipsparseDestroyMatDescr(matB));
+  CUSPARSE_CALL(hipsparseDestroyMatDescr(matC));
   return {
       CSRMatrix(
           A.num_rows, A.num_cols, dC_csrOffsets, dC_columns,
@@ -159,9 +159,9 @@ template std::pair<CSRMatrix, NDArray> CSRSum<kDGLCUDA, int32_t, __half>(
 template std::pair<CSRMatrix, NDArray> CSRSum<kDGLCUDA, int64_t, __half>(
     const std::vector<CSRMatrix>&, const std::vector<NDArray>&);
 #if BF16_ENABLED
-template std::pair<CSRMatrix, NDArray> CSRSum<kDGLCUDA, int32_t, __nv_bfloat16>(
+template std::pair<CSRMatrix, NDArray> CSRSum<kDGLCUDA, int32_t, __hip_bfloat16>(
     const std::vector<CSRMatrix>&, const std::vector<NDArray>&);
-template std::pair<CSRMatrix, NDArray> CSRSum<kDGLCUDA, int64_t, __nv_bfloat16>(
+template std::pair<CSRMatrix, NDArray> CSRSum<kDGLCUDA, int64_t, __hip_bfloat16>(
     const std::vector<CSRMatrix>&, const std::vector<NDArray>&);
 #endif  // BF16_ENABLED
 template std::pair<CSRMatrix, NDArray> CSRSum<kDGLCUDA, int32_t, float>(

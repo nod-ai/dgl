@@ -31,25 +31,25 @@ class gpu_cache_api {
   // Query API, i.e. A single read from the cache
   virtual void Query(const key_type* d_keys, const size_t len, float* d_values,
                      uint64_t* d_missing_index, key_type* d_missing_keys, size_t* d_missing_len,
-                     cudaStream_t stream,
+                     hipStream_t stream,
                      const size_t task_per_warp_tile = TASK_PER_WARP_TILE_MACRO) = 0;
 
   // Replace API, i.e. Follow the Query API to update the content of the cache to Most Recent
   virtual void Replace(const key_type* d_keys, const size_t len, const float* d_values,
-                       cudaStream_t stream,
+                       hipStream_t stream,
                        const size_t task_per_warp_tile = TASK_PER_WARP_TILE_MACRO) = 0;
 
   // Update API, i.e. update the embeddings which exist in the cache
   virtual void Update(const key_type* d_keys, const size_t len, const float* d_values,
-                      cudaStream_t stream,
+                      hipStream_t stream,
                       const size_t task_per_warp_tile = TASK_PER_WARP_TILE_MACRO) = 0;
 
   // Dump API, i.e. dump some slabsets' keys from the cache
   virtual void Dump(key_type* d_keys, size_t* d_dump_counter, const size_t start_set_index,
-                    const size_t end_set_index, cudaStream_t stream) = 0;
+                    const size_t end_set_index, hipStream_t stream) = 0;
 
   // Record all the lookup stream of a specific cache for Update/Replace sync
-  virtual void Record(cudaStream_t stream) = 0;
+  virtual void Record(hipStream_t stream) = 0;
 };
 
 }  // namespace gpu_cache

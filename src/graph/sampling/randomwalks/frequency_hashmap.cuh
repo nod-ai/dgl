@@ -56,7 +56,7 @@ class FrequencyHashmap {
   FrequencyHashmap() = delete;
   FrequencyHashmap(
       int64_t num_dst, int64_t num_items_each_dst, DGLContext ctx,
-      cudaStream_t stream, int64_t edge_table_scale = kDefaultEdgeTableScale);
+      hipStream_t stream, int64_t edge_table_scale = kDefaultEdgeTableScale);
   ~FrequencyHashmap();
   using EdgeItem = typename DeviceEdgeHashmap<IdxType>::EdgeItem;
   std::tuple<IdArray, IdArray, IdArray> Topk(
@@ -66,7 +66,7 @@ class FrequencyHashmap {
 
  private:
   DGLContext _ctx;
-  cudaStream_t _stream;
+  hipStream_t _stream;
   DeviceEdgeHashmap<IdxType> *_device_edge_hashmap;
   IdxType *_dst_unique_edges;
   EdgeItem *_edge_hashmap;

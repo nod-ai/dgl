@@ -6,7 +6,7 @@
 
 #include <dgl/array.h>
 
-#include <cub/cub.cuh>
+#include <hipcub/hipcub.hpp>
 
 #include "../../runtime/cuda/cuda_common.h"
 #include "./utils.h"
@@ -33,24 +33,24 @@ IdArray NonZero(IdArray array) {
   const int64_t len = array->shape[0];
   IdArray ret = NewIdArray(len, ctx, 64);
 
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
 
   const IdType* const in_data = static_cast<const IdType*>(array->data);
   int64_t* const out_data = static_cast<int64_t*>(ret->data);
 
   IsNonZeroIndex<IdType> comp(in_data);
-  cub::CountingInputIterator<int64_t> counter(0);
+  hipcub::CountingInputIterator<int64_t> counter(0);
 
   // room for cub to output on GPU
   int64_t* d_num_nonzeros =
       static_cast<int64_t*>(device->AllocWorkspace(ctx, sizeof(int64_t)));
 
   size_t temp_size = 0;
-  CUDA_CALL(cub::DeviceSelect::If(
+  CUDA_CALL(hipcub::DeviceSelect::If(
       nullptr, temp_size, counter, out_data, d_num_nonzeros, len, comp,
       stream));
   void* temp = device->AllocWorkspace(ctx, temp_size);
-  CUDA_CALL(cub::DeviceSelect::If(
+  CUDA_CALL(hipcub::DeviceSelect::If(
       temp, temp_size, counter, out_data, d_num_nonzeros, len, comp, stream));
   device->FreeWorkspace(ctx, temp);
 

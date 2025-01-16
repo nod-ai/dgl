@@ -331,7 +331,7 @@ void _TestCOOToCSR(DGLContext ctx) {
 TEST(SpmatTest, COOToCSR) {
   _TestCOOToCSR<int32_t>(CPU);
   _TestCOOToCSR<int64_t>(CPU);
-#ifdef DGL_USE_CUDA
+#ifdef DGL_USE_ROCM
   _TestCOOToCSR<int32_t>(GPU);
   _TestCOOToCSR<int64_t>(GPU);
 #endif
@@ -417,7 +417,7 @@ void _TestCOOSort(DGLContext ctx) {
 TEST(SpmatTest, COOSort) {
   _TestCOOSort<int32_t>(CPU);
   _TestCOOSort<int64_t>(CPU);
-#ifdef DGL_USE_CUDA
+#ifdef DGL_USE_ROCM
   _TestCOOSort<int32_t>(GPU);
   _TestCOOSort<int64_t>(GPU);
 #endif
@@ -479,7 +479,7 @@ void _TestCOOGetData(DGLContext ctx) {
 TEST(SpmatTest, COOGetData) {
   _TestCOOGetData<int32_t>(CPU);
   _TestCOOGetData<int64_t>(CPU);
-  // #ifdef DGL_USE_CUDA
+  // #ifdef DGL_USE_ROCM
   //_TestCOOGetData<int32_t>(GPU);
   //_TestCOOGetData<int64_t>(GPU);
   // #endif
