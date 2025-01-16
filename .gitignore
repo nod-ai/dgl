@@ -11,7 +11,10 @@ __pycache__/
 
 # Distribution / packaging
 .Python
-build/
+build
+build-*/
+out/
+CMakeUserPresets.json
 dataset/
 datasets/
 develop-eggs/
@@ -159,6 +162,7 @@ cscope.*
 # vscode
 .clangd
 .vscode
+*.code-workspace
 
 # asv
 .asv
