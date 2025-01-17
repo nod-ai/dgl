@@ -29,13 +29,27 @@ hipblasStatus_t cublasGemm(
   return HIPBLAS_STATUS_EXECUTION_FAILED;
 }
 
+#ifdef DGL_USE_ROCM
+// TODO: ROCM doesn't define this. Figure out what the actual right way to handle this is.
+#define __syncwarp()
+#endif
+
 template <>
 hipblasStatus_t cublasGemm<__half>(
     hipblasHandle_t handle, hipblasOperation_t transa, hipblasOperation_t transb,
     int m, int n, int k, const __half* alpha, const __half* A, int lda,
     const __half* B, int ldb, const __half* beta, __half* C, int ldc) {
+#ifdef DGL_USE_ROCM
+  float alpha_float = __half2float(*alpha);
+  float beta_float = __half2float(*beta);
+  return hipblasGemmEx_v2(
+      handle, transa, transb, m, n, k, &alpha_float, A, HIP_R_16F, lda, B,
+      HIP_R_16F, ldb, &beta_float, C, HIP_R_16F, ldc, HIPBLAS_COMPUTE_32F,
+      HIPBLAS_GEMM_DEFAULT);
+#else
   return hipblasHgemm(
       handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
+#endif
 }
 
 #if BF16_ENABLED

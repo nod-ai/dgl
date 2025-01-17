@@ -41,12 +41,12 @@ void SpMMCsrHetero(
   if (NULL != std::getenv("USE_DETERMINISTIC_ALG"))
     use_deterministic_alg_only = true;
 
+  // legacy cuSPARSE does not care about NNZ, hence the argument "false".
   bool use_legacy_cusparsemm =
-      (CUDART_VERSION < 11000) && (reduce == "sum") &&
-      // legacy cuSPARSE does not care about NNZ, hence the argument "false".
-      ((op == "copy_lhs" && cusparse_available<DType, IdType>(false)) ||
-       (op == "mul" && is_scalar_efeat &&
-        cusparse_available<DType, IdType>(false)));
+      CUSPARSE_IS_LEGACY && (reduce == "sum") &&
+      cusparse_available<DType, IdType>(false) &&
+      (op == "copy_lhs" || (op == "mul" && is_scalar_efeat));
+
   // Create temporary output buffer to store non-transposed output
   if (use_legacy_cusparsemm) {
     for (dgl_type_t ntype = 0; ntype < (*vec_out).size(); ++ntype) {
@@ -128,7 +128,7 @@ void SpMMCsrHetero(
           cusparse_available<DType, IdType>(more_nnz)) {  // cusparse
         /* If CUDA is less than 11.0, put the output in trans_out for later
          * transposition */
-        DType* out = (CUDART_VERSION < 11000)
+        DType* out = CUSPARSE_IS_LEGACY
                          ? trans_out[dst_id]
                          : static_cast<DType*>((*vec_out)[dst_id]->data);
         CusparseCsrmm2Hetero<DType, IdType>(

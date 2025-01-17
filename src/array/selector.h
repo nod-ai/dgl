@@ -31,7 +31,10 @@ template <int target>
 struct Selector {
   template <typename T>
   static DGLDEVICE DGLINLINE T Call(T src, T edge, T dst) {
+    // HIP gets upset and thinks a device function is calling a host function here.
+    #ifndef DGL_USE_ROCM
     LOG(INFO) << "Target " << target << " not recognized.";
+    #endif
     return src;
   }
 };
