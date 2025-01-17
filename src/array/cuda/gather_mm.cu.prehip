@@ -28,13 +28,29 @@ cublasStatus_t cublasGemm(
   return CUBLAS_STATUS_EXECUTION_FAILED;
 }
 
+#ifdef DGL_USE_ROCM
+// TODO: This is correct, but unnecessarily costly as it synchronizes the whole
+// block. Switch to using cooperative groups. See
+// https://github.com/ROCm/HIP/issues/3668
+#define __syncwarp __syncthreads
+#endif
+
 template <>
 cublasStatus_t cublasGemm<__half>(
     cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb,
     int m, int n, int k, const __half* alpha, const __half* A, int lda,
     const __half* B, int ldb, const __half* beta, __half* C, int ldc) {
+#ifdef DGL_USE_ROCM
+  float alpha_float = __half2float(*alpha);
+  float beta_float = __half2float(*beta);
+  return hipblasGemmEx_v2(
+      handle, transa, transb, m, n, k, &alpha_float, A, HIP_R_16F, lda, B,
+      HIP_R_16F, ldb, &beta_float, C, HIP_R_16F, ldc, HIPBLAS_COMPUTE_32F,
+      HIPBLAS_GEMM_DEFAULT);
+#else
   return cublasHgemm(
       handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
+#endif
 }
 
 #if BF16_ENABLED
@@ -304,8 +320,7 @@ void GatherMM(
   int64_t in_len = A->shape[1];   // cols of A
   const int64_t tot_num_rows = A->shape[0];
   const int ntx = 128;
-  const int warp_size = 32;
-  const int nbx = ((tot_num_rows * warp_size + ntx - 1) / ntx);
+  const int nbx = ((tot_num_rows * DGL_WARP_SIZE + ntx - 1) / ntx);
   const dim3 nblks(nbx);
   const dim3 nthrs(ntx);
   CUDA_KERNEL_CALL(
@@ -338,8 +353,7 @@ void GatherMMScatter(
   int64_t in_len = A->shape[1];                                  // cols of A
   int64_t tot_num_rows = A->shape[0];
   const int ntx = 128;
-  const int warp_size = 32;
-  const int nbx = ((tot_num_rows * warp_size + ntx - 1) / ntx);
+  const int nbx = ((tot_num_rows * DGL_WARP_SIZE + ntx - 1) / ntx);
   const dim3 nblks(nbx);
   const dim3 nthrs(ntx);
   if (B->ndim == 3) {

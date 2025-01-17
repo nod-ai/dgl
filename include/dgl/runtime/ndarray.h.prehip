@@ -20,11 +20,23 @@
 #ifdef DGL_USE_CUDA
 #include <cuda_runtime.h>
 
-#define BF16_ENABLED (defined(CUDART_VERSION) && CUDART_VERSION >= 11000)
+#if CUDART_VERSION >= 11000 || defined(DGL_USE_ROCM)
+#define BF16_ENABLED 1
+#else
+#define BF16_ENABLED 0
+#endif
 
 #include <cuda_fp16.h>
 #if BF16_ENABLED
-#include <cuda_bf16.h>
+#if defined(DGL_USE_ROCM) && !defined(__HIPCC__)
+// hip_bf16.h delegates to amd_bf16.h, which irritatingly includes files using
+// AMDGCN intrinsics, so can't be compiled by regular clang. So we just forward
+// declare the type.
+// TODO: is there a better way to do this?
+struct __hip_bfloat16;
+#else
+#include <hip/hip_bf16.h>
+#endif  // defined(DGL_USE_ROCM) && !defined(__HIPCC__)
 #endif  // BF16_ENABLED
 #endif  // DGL_USE_CUDA
 
