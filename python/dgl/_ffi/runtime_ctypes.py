@@ -154,6 +154,9 @@ class DGLContext(ctypes.Structure):
 
         inst = super(DGLContext, cls).__new__(DGLContext)
 
+        # The DGL ROCM port pretends that ROCM is CUDA for these enums.
+        if device_type == 10:
+            device_type = 2
         inst.device_type = device_type
         inst.device_id = device_id
 
