@@ -30,8 +30,10 @@ hipblasStatus_t cublasGemm(
 }
 
 #ifdef DGL_USE_ROCM
-// TODO: ROCM doesn't define this. Figure out what the actual right way to handle this is.
-#define __syncwarp()
+// TODO: This is correct, but unnecessarily costly as it synchronizes the whole
+// block. Switch to using cooperative groups. See
+// https://github.com/ROCm/HIP/issues/3668
+#define __syncwarp __syncthreads
 #endif
 
 template <>
