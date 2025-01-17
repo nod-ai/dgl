@@ -66,7 +66,7 @@ hipblasStatus_t cublasGemm<__hip_bfloat16>(
   return hipblasGemmEx_v2(
       handle, transa, transb, m, n, k, &alpha_float, A, HIP_R_16BF, lda, B,
       HIP_R_16BF, ldb, &beta_float, C, HIP_R_16BF, ldc, HIPBLAS_COMPUTE_32F,
-      CUBLAS_GEMM_DEFAULT_TENSOR_OP);
+      HIPBLAS_GEMM_DEFAULT);
 }
 #endif  // BF16_ENABLED
 

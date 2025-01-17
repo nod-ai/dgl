@@ -26,7 +26,7 @@
 
 static __device__ __forceinline__ __hip_bfloat16
 max(__hip_bfloat16 a, __hip_bfloat16 b) {
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+#if __CUDA_ARCH__ >= 800 || defined(__HIP_DEVICE_COMPILE__)
   return __hmax(a, b);
 #else
   return __hip_bfloat16(max(float(a), float(b)));  // NOLINT
@@ -35,7 +35,7 @@ max(__hip_bfloat16 a, __hip_bfloat16 b) {
 
 static __device__ __forceinline__ __hip_bfloat16
 min(__hip_bfloat16 a, __hip_bfloat16 b) {
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+#if __CUDA_ARCH__ >= 800 || defined(__HIP_DEVICE_COMPILE__)
   return __hmin(a, b);
 #else
   return __hip_bfloat16(min(float(a), float(b)));  // NOLINT
