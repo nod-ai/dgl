@@ -19,7 +19,7 @@ message(STATUS "Configuring for PyTorch ${TORCH_VER}")
 
 if(USE_CUDA)
   add_definitions(-DDGL_USE_CUDA)
-elif(USE_ROCM)
+elseif(USE_ROCM)
   add_definitions(-DDGL_USE_ROCM)
 endif()
 
