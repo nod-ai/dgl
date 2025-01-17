@@ -78,11 +78,10 @@ __global__ void UpdateGradMinMaxHeteroKernel(
   unsigned int laneId = tId & 31;
   unsigned int gId = blockIdx.x * blockDim.x + threadIdx.x;
   unsigned int warpId = gId >> 5;
-  unsigned int warp_size = 32;
   unsigned int row = warpId;
 
   while (row < n) {
-    for (unsigned int col = laneId; col < dim; col += warp_size) {
+    for (unsigned int col = laneId; col < dim; col += DGL_WARP_SIZE) {
       if (type == idx_type[row * dim + col]) {
         const int write_row = idx[row * dim + col];
         cuda::AtomicAdd(out + write_row * dim + col, feat[row * dim + col]);
