@@ -67,3 +67,8 @@ macro(dgl_option variable description value)
     unset(${variable} CACHE)
   endif()
 endmacro()
+
+macro(find_package_and_print_version PACKAGE_NAME)
+  find_package("${PACKAGE_NAME}" ${ARGN})
+  message("${PACKAGE_NAME} VERSION: ${${PACKAGE_NAME}_VERSION}")
+endmacro()

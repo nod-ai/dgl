@@ -54,7 +54,7 @@ class MutableDeviceOrderedHashTable : public DeviceOrderedHashTable<IdType> {
    * @return The mapping.
    */
   inline __device__ Iterator Search(const IdType id) {
-    const IdType pos = SearchForPosition(id);
+    const IdType pos = this->SearchForPosition(id);
 
     return GetMutable(pos);
   }
@@ -95,12 +95,12 @@ class MutableDeviceOrderedHashTable : public DeviceOrderedHashTable<IdType> {
    * @return An iterator to inserted mapping.
    */
   inline __device__ Iterator Insert(const IdType id, const size_t index) {
-    size_t pos = Hash(id);
+    size_t pos = this->Hash(id);
 
     // linearly scan for an empty slot or matching entry
     IdType delta = 1;
     while (!AttemptInsertAt(pos, id, index)) {
-      pos = Hash(pos + delta);
+      pos = this->Hash(pos + delta);
       delta += 1;
     }
 

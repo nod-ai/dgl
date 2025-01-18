@@ -90,7 +90,7 @@ inline int FindNumBlocks(int nblks, int max_nblks = -1) {
 
 template <typename T>
 __device__ __forceinline__ T _ldg(T* addr) {
-#if __CUDA_ARCH__ >= 350
+#if __CUDA_ARCH__ >= 350 || defined(__HIP_DEVICE_COMPILE__)
   return __ldg(addr);
 #else
   return *addr;

@@ -26,7 +26,15 @@ void NDArrayDLPackDeleter(DLManagedTensor* tensor) {
 
 inline DGLContext ToDGLContext(const DLDevice& device) {
   DGLContext ctx;
-  ctx.device_type = static_cast<DGLDeviceType>(device.device_type);
+  auto device_type = device.device_type;
+  // We pretend ROCM is CUDA. This allows just hipifying the source code rather
+  // than having to add all the templating stuff for ROCM separately. 
+#ifdef DGL_USE_ROCM
+  if (device_type == DLDeviceType::kDLROCM) {
+    device_type = DLDeviceType::kDLCUDA;
+  }
+#endif
+  ctx.device_type = static_cast<DGLDeviceType>(device_type);
   ctx.device_id = device.device_id;
   return ctx;
 }
@@ -41,7 +49,15 @@ inline DGLDataType ToDGLDataType(const DLDataType& src) {
 
 inline DLDevice ToDLDevice(const DGLContext& ctx) {
   DLDevice device;
-  device.device_type = static_cast<DLDeviceType>(ctx.device_type);
+  auto device_type = static_cast<DLDeviceType>(ctx.device_type);
+  // We pretend ROCM is CUDA. This allows just hipifying the source code rather
+  // than having to add all the templating stuff for ROCM separately.
+#ifdef DGL_USE_ROCM
+  if (device_type == DLDeviceType::kDLCUDA) {
+    device_type = DLDeviceType::kDLROCM;
+  }
+#endif
+  device.device_type = device_type;
   device.device_id = ctx.device_id;
   return device;
 }
