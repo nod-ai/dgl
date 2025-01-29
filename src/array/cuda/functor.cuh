@@ -210,7 +210,7 @@ struct Sum<Idx, __half, atomic> : _Sum<Idx, __half, atomic> {
 template <typename Idx, bool atomic>
 struct Sum<Idx, __hip_bfloat16, atomic> : _Sum<Idx, __hip_bfloat16, atomic> {
   static constexpr __host__ __device__ __forceinline__ __hip_bfloat16 zero() {
-    return __float2bfloat16_rn(0.);
+    return HIPRT_ZERO_BF16;
   }
   static __device__ __forceinline__ void Call(
       __hip_bfloat16 *out_buf, Idx *arg_u_buf, Idx *arg_e_buf,
@@ -315,7 +315,7 @@ struct Max<Idx, __half, atomic> : _Max<Idx, __half, atomic> {
 template <typename Idx, bool atomic>
 struct Max<Idx, __hip_bfloat16, atomic> : _Max<Idx, __hip_bfloat16, atomic> {
   static constexpr __host__ __device__ __forceinline__ __hip_bfloat16 zero() {
-    return __float2bfloat16_rn(-std::numeric_limits<float>::infinity());
+    return -HIPRT_INF_BF16;
   }
   static __device__ __forceinline__ void Call(
       __hip_bfloat16 *out_buf, Idx *arg_u_buf, Idx *arg_e_buf,
@@ -420,7 +420,7 @@ struct Min<Idx, __half, atomic> : _Min<Idx, __half, atomic> {
 template <typename Idx, bool atomic>
 struct Min<Idx, __hip_bfloat16, atomic> : _Min<Idx, __hip_bfloat16, atomic> {
   static constexpr __host__ __device__ __forceinline__ __hip_bfloat16 zero() {
-    return __float2bfloat16_rn(std::numeric_limits<float>::infinity());
+    return HIPRT_INF_BF16;
   }
   static __device__ __forceinline__ void Call(
       __hip_bfloat16 *out_buf, Idx *arg_u_buf, Idx *arg_e_buf,
