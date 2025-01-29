@@ -58,7 +58,7 @@ inline NumPicksFn<IdxType> GetSamplingNumPicksFn(
 template <typename IdxType, typename DType>
 inline PickFn<IdxType> GetSamplingPickFn(
     int64_t num_samples, NDArray prob_or_mask, bool replace) {
-  PickFn<IdxType> pick_fn = [prob_or_mask, num_samples, replace](
+  PickFn<IdxType> pick_fn = [prob_or_mask, replace](
                                 IdxType rowid, IdxType off, IdxType len,
                                 IdxType num_picks, const IdxType* col,
                                 const IdxType* data, IdxType* out_idx) {
@@ -118,7 +118,7 @@ inline NumPicksFn<IdxType> GetSamplingUniformNumPicksFn(
 template <typename IdxType>
 inline PickFn<IdxType> GetSamplingUniformPickFn(
     int64_t num_samples, bool replace) {
-  PickFn<IdxType> pick_fn = [num_samples, replace](
+  PickFn<IdxType> pick_fn = [replace](
                                 IdxType rowid, IdxType off, IdxType len,
                                 IdxType num_picks, const IdxType* col,
                                 const IdxType* data, IdxType* out_idx) {
@@ -176,7 +176,7 @@ inline NumPicksFn<IdxType> GetSamplingBiasedNumPicksFn(
 template <typename IdxType, typename FloatType>
 inline PickFn<IdxType> GetSamplingBiasedPickFn(
     int64_t num_samples, IdArray split, FloatArray bias, bool replace) {
-  PickFn<IdxType> pick_fn = [num_samples, split, bias, replace](
+  PickFn<IdxType> pick_fn = [split, bias, replace](
                                 IdxType rowid, IdxType off, IdxType len,
                                 IdxType num_picks, const IdxType* col,
                                 const IdxType* data, IdxType* out_idx) {

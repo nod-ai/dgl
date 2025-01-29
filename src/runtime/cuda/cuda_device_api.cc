@@ -24,7 +24,7 @@ class CUDADeviceAPI final : public DeviceAPI {
         break;
       default:
         count = 0;
-        hipGetLastError();
+        (void)hipGetLastError();  // clear error
     }
     is_available_ = count > 0;
   }
@@ -187,7 +187,7 @@ class CUDADeviceAPI final : public DeviceAPI {
     }
   }
 
-  DGLStreamHandle CreateStream(DGLContext ctx) {
+  DGLStreamHandle CreateStream(DGLContext ctx) override {
     CUDA_CALL(hipSetDevice(ctx.device_id));
     hipStream_t retval;
     // make sure the legacy default stream won't block on this stream
@@ -195,14 +195,15 @@ class CUDADeviceAPI final : public DeviceAPI {
     return static_cast<DGLStreamHandle>(retval);
   }
 
-  void FreeStream(DGLContext ctx, DGLStreamHandle stream) {
+  void FreeStream(DGLContext ctx, DGLStreamHandle stream) override {
     CUDA_CALL(hipSetDevice(ctx.device_id));
     hipStream_t cu_stream = static_cast<hipStream_t>(stream);
     CUDA_CALL(hipStreamDestroy(cu_stream));
   }
 
   void SyncStreamFromTo(
-      DGLContext ctx, DGLStreamHandle event_src, DGLStreamHandle event_dst) {
+      DGLContext ctx, DGLStreamHandle event_src,
+      DGLStreamHandle event_dst) override {
     CUDA_CALL(hipSetDevice(ctx.device_id));
     hipStream_t src_stream = static_cast<hipStream_t>(event_src);
     hipStream_t dst_stream = static_cast<hipStream_t>(event_dst);
@@ -248,7 +249,7 @@ class CUDADeviceAPI final : public DeviceAPI {
     return true;
   }
 
-  void UnpinData(void* ptr) {
+  void UnpinData(void* ptr) override {
     if (ptr == nullptr) return;
     CUDA_CALL(hipHostUnregister(ptr));
   }
@@ -283,7 +284,7 @@ class CUDADeviceAPI final : public DeviceAPI {
     switch (status) {
       case hipErrorInvalidValue:
         // might be a normal CPU tensor in CUDA 10.2-
-        hipGetLastError();  // clear error
+        (void)hipGetLastError();  // clear error
         break;
       case hipSuccess:
         result = (attr.type == hipMemoryTypeHost);
@@ -298,7 +299,7 @@ class CUDADeviceAPI final : public DeviceAPI {
         // initialized.  So we just mark the CUDA context to unavailable and
         // return.
         is_available_ = false;
-        hipGetLastError();  // clear error
+        (void)hipGetLastError();  // clear error
         break;
       default:
         LOG(FATAL) << "error while determining memory status: "
