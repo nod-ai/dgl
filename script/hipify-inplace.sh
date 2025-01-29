@@ -31,6 +31,11 @@ declare -a srcs=(
 )
 
 declare -a log_files=()
+
+log_file="$(mktemp --tmpdir hipify_tensoradapter.XXX.log)"
+log_files+=("${log_file}")
+( set -x ; script/hipify-tensoradapter.py &> "${log_file}" ) &
+
 for src in ${srcs[@]}; do
     log_file="$(mktemp --tmpdir hipify_${src//\//_}.XXX.log)"
     log_files+=("${log_file}")

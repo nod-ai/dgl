@@ -69,7 +69,7 @@ inline int get_dev(const void* ptr) {
   CUDA_CHECK(cudaPointerGetAttributes(&attr, ptr));
   int dev = -1;
 
-#if CUDART_VERSION >= 10000
+#if not defined(CUDART_VERSION) || CUDART_VERSION >= 10000
   if (attr.type == cudaMemoryTypeDevice)
 #else
   if (attr.memoryType == cudaMemoryTypeDevice)

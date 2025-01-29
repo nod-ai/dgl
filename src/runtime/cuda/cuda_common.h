@@ -21,10 +21,10 @@
 // but there's a lot of code that assumes this is a compile-time constant, so
 // for now we're hardcoding it. See
 // https://rocm.docs.amd.com/projects/HIP/en/latest/how-to/hip_cpp_language_extensions.html#warpsize
-#ifdef DGL_USE_CUDA
-#define DGL_WARP_SIZE 32
-#elif DGL_USE_ROCM
+#ifdef DGL_USE_ROCM
 #define DGL_WARP_SIZE 64
+#else
+#define DGL_WARP_SIZE 32
 #endif
 
 namespace dgl {

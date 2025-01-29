@@ -29,9 +29,18 @@ __forceinline__ __device__ long long atomicAdd(long long* address, long long val
   return (long long)atomicAdd((unsigned long long*)address, (unsigned long long)val);
 }
 
+// Defining this causes this error:
+// /.../dgl/third_party/HugeCTR/gpu_cache/src/nv_gpu_cache.cu:33:42: error: redefinition of 'atomicAdd'
+//    33 | __forceinline__ __device__ unsigned long atomicAdd(unsigned long* address, unsigned long val) {
+//       |                                          ^
+// /opt/rocm-6.2.3/lib/llvm/bin/../../../include/hip/amd_detail/amd_hip_atomic.h:240:15: note: previous definition is here
+//   240 | unsigned long atomicAdd(unsigned long* address, unsigned long val) {
+//       |               ^
+#ifndef DGL_USE_ROCM
 __forceinline__ __device__ unsigned long atomicAdd(unsigned long* address, unsigned long val) {
   return (unsigned long)atomicAdd((unsigned long long*)address, (unsigned long long)val);
 }
+#endif
 
 namespace gpu_cache {
 
@@ -327,7 +336,7 @@ __global__ void get_kernel(const key_type* d_keys, const size_t len, float* d_va
       key_type read_key = keys[next_set].set_[next_slab].slab_[lane_idx];
 
       // Compare the slab data with the target key
-      int found_lane = __ffs(warp_tile.ballot(read_key == next_key)) - 1;
+      int found_lane = __ffs(static_cast<unsigned int>(warp_tile.ballot(read_key == next_key))) - 1;
 
       // If found, mark hit task, copy the founded data, the task is completed
       if (found_lane >= 0) {
@@ -472,7 +481,7 @@ __global__ void get_kernel(const key_type* d_keys, const size_t len, float* d_va
       key_type read_key = ((volatile key_type*)(keys[next_set].set_[next_slab].slab_))[lane_idx];
 
       // Compare the slab data with the target key
-      int found_lane = __ffs(warp_tile.ballot(read_key == next_key)) - 1;
+      int found_lane = __ffs(static_cast<unsigned int>(warp_tile.ballot(read_key == next_key))) - 1;
 
       // If found, mark hit task, copy the founded data, the task is completed
       if (found_lane >= 0) {
@@ -636,7 +645,7 @@ __global__ void insert_replace_kernel(const key_type* d_keys, const float* d_val
       key_type read_key = keys[next_set].set_[next_slab].slab_[lane_idx];
 
       // Compare the slab data with the target key
-      int found_lane = __ffs(warp_tile.ballot(read_key == next_key)) - 1;
+      int found_lane = __ffs(static_cast<unsigned int>(warp_tile.ballot(read_key == next_key))) - 1;
 
       // If found target key, the insertion/replace is no longer needed.
       // Refresh the slot, the task is completed
@@ -653,7 +662,7 @@ __global__ void insert_replace_kernel(const key_type* d_keys, const float* d_val
 
       // Compare the slab data with empty key.
       // If found empty key, do insertion,the task is complete
-      found_lane = __ffs(warp_tile.ballot(read_key == empty_key)) - 1;
+      found_lane = __ffs(static_cast<unsigned int>(warp_tile.ballot(read_key == empty_key))) - 1;
       if (found_lane >= 0) {
         size_t found_offset = (next_set * set_associativity + next_slab) * warp_size + found_lane;
 
@@ -795,7 +804,7 @@ __global__ void insert_replace_kernel(const key_type* d_keys, const float* d_val
       key_type read_key = ((volatile key_type*)(keys[next_set].set_[next_slab].slab_))[lane_idx];
 
       // Compare the slab data with the target key
-      int found_lane = __ffs(warp_tile.ballot(read_key == next_key)) - 1;
+      int found_lane = __ffs(static_cast<unsigned int>(warp_tile.ballot(read_key == next_key))) - 1;
 
       // If found target key, the insertion/replace is no longer needed.
       // Refresh the slot, the task is completed
@@ -812,7 +821,7 @@ __global__ void insert_replace_kernel(const key_type* d_keys, const float* d_val
 
       // Compare the slab data with empty key.
       // If found empty key, do insertion,the task is complete
-      found_lane = __ffs(warp_tile.ballot(read_key == empty_key)) - 1;
+      found_lane = __ffs(static_cast<unsigned int>(warp_tile.ballot(read_key == empty_key))) - 1;
       if (found_lane >= 0) {
         size_t found_offset = (next_set * set_associativity + next_slab) * warp_size + found_lane;
 
@@ -925,7 +934,7 @@ __global__ void update_kernel(const key_type* d_keys, const size_t len, const fl
       key_type read_key = keys[next_set].set_[next_slab].slab_[lane_idx];
 
       // Compare the slab data with the target key
-      int found_lane = __ffs(warp_tile.ballot(read_key == next_key)) - 1;
+      int found_lane = __ffs(static_cast<unsigned int>(warp_tile.ballot(read_key == next_key))) - 1;
 
       // If found, mark hit task, update the value, the task is completed
       if (found_lane >= 0) {
@@ -1035,7 +1044,7 @@ __global__ void update_kernel(const key_type* d_keys, const size_t len, const fl
       key_type read_key = ((volatile key_type*)(keys[next_set].set_[next_slab].slab_))[lane_idx];
 
       // Compare the slab data with the target key
-      int found_lane = __ffs(warp_tile.ballot(read_key == next_key)) - 1;
+      int found_lane = __ffs(static_cast<unsigned int>(warp_tile.ballot(read_key == next_key))) - 1;
 
       // If found, mark hit task, update the value, the task is completed
       if (found_lane >= 0) {
@@ -1246,9 +1255,9 @@ gpu_cache<key_type, ref_counter_type, empty_key, set_associativity, warp_size, s
     printf("Error: Invalid value for set_associativity.\n");
     return;
   }
-  if (warp_size != 1 && warp_size != 2 && warp_size != 4 && warp_size != 8 && warp_size != 16 &&
-      warp_size != 32) {
-    printf("Error: Invalid value for warp_size.\n");
+  // Power of 2 between 1 and SLAB_SIZE
+  if ((warp_size & (warp_size-1)) != 0 || warp_size < 1 || warp_size > SLAB_SIZE) {
+    printf("Error: Invalid value for warp_size %d.\n", warp_size);
     return;
   }
 
@@ -1294,9 +1303,9 @@ gpu_cache<key_type, ref_counter_type, empty_key, set_associativity, warp_size, s
     printf("Error: Invalid value for set_associativity.\n");
     return;
   }
-  if (warp_size != 1 && warp_size != 2 && warp_size != 4 && warp_size != 8 && warp_size != 16 &&
-      warp_size != 32) {
-    printf("Error: Invalid value for warp_size.\n");
+  // Power of 2 between 1 and SLAB_SIZE
+  if ((warp_size & (warp_size-1)) != 0 || warp_size < 1 || warp_size > SLAB_SIZE) {
+    printf("Error: Invalid value for warp_size %d.\n", warp_size);
     return;
   }
 

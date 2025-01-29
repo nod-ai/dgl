@@ -28,7 +28,15 @@
 #endif
 
 #define SET_ASSOCIATIVITY 2
+// TODO: Properly for portable HIP code, this should be determined at runtime,
+// but there's a lot of code that assumes this is a compile-time constant, so
+// for now we're hardcoding it. See
+// https://rocm.docs.amd.com/projects/HIP/en/latest/how-to/hip_cpp_language_extensions.html#warpsize
+#ifdef DGL_USE_ROCM
+#define SLAB_SIZE 64
+#else
 #define SLAB_SIZE 32
+#endif
 #define TASK_PER_WARP_TILE_MACRO 1
 
 namespace gpu_cache {
