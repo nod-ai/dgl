@@ -6,7 +6,7 @@
 #ifndef DGL_ARRAY_CUDA_ATOMIC_CUH_
 #define DGL_ARRAY_CUDA_ATOMIC_CUH_
 
-#include <cuda_runtime.h>
+#include <hip/hip_runtime.h>
 
 #include <cassert>
 #include <cstdint>
@@ -16,7 +16,7 @@
 #include "fp16.cuh"
 
 #if __CUDA_ARCH__ >= 600
-#include <cuda_fp16.h>
+#include <hip/hip_fp16.h>
 #endif
 
 namespace dgl {
@@ -67,28 +67,28 @@ struct Cast<half> {
 
 #if BF16_ENABLED
 template <>
-struct Cast<__nv_bfloat16> {
-  typedef Code<sizeof(__nv_bfloat16)>::Type Type;
-  static __device__ __forceinline__ Type Encode(__nv_bfloat16 val) {
+struct Cast<__hip_bfloat16> {
+  typedef Code<sizeof(__hip_bfloat16)>::Type Type;
+  static __device__ __forceinline__ Type Encode(__hip_bfloat16 val) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
     return __bfloat16_as_ushort(val);
 #else
     printf(
         "Atomic operations are not supported for bfloat16 (BF16) "
         "on GPUs with compute capability less than 8.0.\n");
-    __trap();
+    abort();
     return static_cast<Type>(0);
 #endif
   }
-  static __device__ __forceinline__ __nv_bfloat16 Decode(Type code) {
+  static __device__ __forceinline__ __hip_bfloat16 Decode(Type code) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
     return __ushort_as_bfloat16(code);
 #else
     printf(
         "Atomic operations are not supported for bfloat16 (BF16) "
         "on GPUs with compute capability less than 8.0.\n");
-    __trap();
-    return static_cast<__nv_bfloat16>(0.0f);
+    abort();
+    return static_cast<__hip_bfloat16>(0.0f);
 #endif
   }
 };
@@ -130,7 +130,7 @@ static __device__ __forceinline__ unsigned short int atomicCASshort(  // NOLINT
   printf(
       "Atomic operations are not supported for half precision (FP16) "
       "on this GPU.\n");
-  __trap();
+  abort();
   return val;
 #endif  // (defined(__CUDA_ARCH__) && (__CUDA_ARCH__) >= 700)
 }
@@ -172,7 +172,7 @@ static __device__ __forceinline__ unsigned short int atomicCASshort(  // NOLINT
 DEFINE_ATOMIC(Max)
 DEFINE_ATOMIC_16BIT(Max, half)
 #if BF16_ENABLED
-DEFINE_ATOMIC_16BIT(Max, __nv_bfloat16)
+DEFINE_ATOMIC_16BIT(Max, __hip_bfloat16)
 #endif  // BF16_ENABLED
 #undef OP
 
@@ -180,7 +180,7 @@ DEFINE_ATOMIC_16BIT(Max, __nv_bfloat16)
 DEFINE_ATOMIC(Min)
 DEFINE_ATOMIC_16BIT(Min, half)
 #if BF16_ENABLED
-DEFINE_ATOMIC_16BIT(Min, __nv_bfloat16)
+DEFINE_ATOMIC_16BIT(Min, __hip_bfloat16)
 #endif  // BF16_ENABLED
 #undef OP
 
@@ -304,7 +304,7 @@ __device__ __forceinline__ half AtomicAdd<half>(half* addr, half val) {
   printf(
       "Atomic operations are not supported for half precision (FP16) "
       "on this GPU.\n");
-  __trap();
+  abort();
   return val;
 #endif  // __CUDA_ARCH__ >= 700
 }
@@ -312,8 +312,8 @@ __device__ __forceinline__ half AtomicAdd<half>(half* addr, half val) {
 
 #if BF16_ENABLED
 template <>
-__device__ __forceinline__ __nv_bfloat16
-AtomicAdd<__nv_bfloat16>(__nv_bfloat16* addr, __nv_bfloat16 val) {
+__device__ __forceinline__ __hip_bfloat16
+AtomicAdd<__hip_bfloat16>(__hip_bfloat16* addr, __hip_bfloat16 val) {
 // make sure we have bfloat16 support
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
   return atomicAdd(addr, val);
@@ -323,7 +323,7 @@ AtomicAdd<__nv_bfloat16>(__nv_bfloat16* addr, __nv_bfloat16 val) {
   printf(
       "Atomic operations are not supported for bfloat16 (BF16) "
       "on GPUs with compute capability less than 8.0.\n");
-  __trap();
+  abort();
   return val;
 #endif  // defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
 }

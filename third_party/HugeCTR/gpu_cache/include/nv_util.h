@@ -15,9 +15,9 @@
  */
 #pragma once
 
-#include <cuda_fp16.h>
-#include <cuda_fp8.h>
-#include <cuda_runtime_api.h>
+#include <hip/hip_fp16.h>
+#include <hip/hip_fp8.h>
+#include <hip/hip_runtime_api.h>
 
 #include <stdexcept>
 #include <string>
@@ -31,27 +31,27 @@ template <typename T>
 struct is_fp8 : std::false_type {};
 
 template <>
-struct is_fp8<__nv_fp8_e4m3> : std::true_type {};
+struct is_fp8<__hip_fp8_e4m3> : std::true_type {};
 
 template <>
-struct is_fp8<__nv_fp8_e5m2> : std::true_type {};
+struct is_fp8<__hip_fp8_e5m2> : std::true_type {};
 
 class CudaException : public std::runtime_error {
  public:
   CudaException(const std::string& what) : runtime_error(what) {}
 };
 
-inline void cuda_check_(cudaError_t val, const char* file, int line) {
-  if (val != cudaSuccess) {
+inline void cuda_check_(hipError_t val, const char* file, int line) {
+  if (val != hipSuccess) {
     throw CudaException(std::string(file) + ":" + std::to_string(line) + ": CUDA error " +
-                        std::to_string(val) + ": " + cudaGetErrorString(val));
+                        std::to_string(val) + ": " + hipGetErrorString(val));
   }
 }
 
 class CudaDeviceRestorer {
  public:
-  CudaDeviceRestorer() { CUDA_CHECK(cudaGetDevice(&dev_)); }
-  ~CudaDeviceRestorer() { CUDA_CHECK(cudaSetDevice(dev_)); }
+  CudaDeviceRestorer() { CUDA_CHECK(hipGetDevice(&dev_)); }
+  ~CudaDeviceRestorer() { CUDA_CHECK(hipSetDevice(dev_)); }
   void check_device(int device) const {
     if (device != dev_) {
       throw std::runtime_error(
@@ -65,14 +65,14 @@ class CudaDeviceRestorer {
 };
 
 inline int get_dev(const void* ptr) {
-  cudaPointerAttributes attr;
-  CUDA_CHECK(cudaPointerGetAttributes(&attr, ptr));
+  hipPointerAttribute_t attr;
+  CUDA_CHECK(hipPointerGetAttributes(&attr, ptr));
   int dev = -1;
 
 #if CUDART_VERSION >= 10000
-  if (attr.type == cudaMemoryTypeDevice)
+  if (attr.type == hipMemoryTypeDevice)
 #else
-  if (attr.memoryType == cudaMemoryTypeDevice)
+  if (attr.memoryType == hipMemoryTypeDevice)
 #endif
   {
     dev = attr.device;
@@ -83,7 +83,7 @@ inline int get_dev(const void* ptr) {
 inline void switch_to_dev(const void* ptr) {
   int dev = get_dev(ptr);
   if (dev >= 0) {
-    CUDA_CHECK(cudaSetDevice(dev));
+    CUDA_CHECK(hipSetDevice(dev));
   }
 }
 

@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 /**
  *  Copyright (c) 2021 by Contributors
  * @file runtime/cuda/cuda_device_common.cuh
@@ -10,7 +11,7 @@
 #include <dgl/runtime/c_runtime_api.h>
 
 #include "cuda_common.h"
-#include "cuda_runtime.h"
+#include "hip/hip_runtime.h"
 
 namespace dgl {
 namespace runtime {
@@ -228,7 +229,7 @@ class OrderedHashTable {
    * @param stream The stream to use for initializing the hashtable.
    */
   OrderedHashTable(
-      const size_t size, DGLContext ctx, cudaStream_t stream,
+      const size_t size, DGLContext ctx, hipStream_t stream,
       const int scale = kDefaultScale);
 
   /**
@@ -252,7 +253,7 @@ class OrderedHashTable {
    */
   void FillWithDuplicates(
       const IdType* const input, const size_t num_input, IdType* const unique,
-      int64_t* const num_unique, cudaStream_t stream);
+      int64_t* const num_unique, hipStream_t stream);
 
   /**
    * @brief Fill the hashtable with an array of unique keys.
@@ -262,7 +263,7 @@ class OrderedHashTable {
    * @param stream The stream to perform operations on.
    */
   void FillWithUnique(
-      const IdType* const input, const size_t num_input, cudaStream_t stream);
+      const IdType* const input, const size_t num_input, hipStream_t stream);
 
   /**
    * @brief Get a verison of the hashtable usable from device functions.

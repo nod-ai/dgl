@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 /**
  * Copyright (c) 2020 by Contributors
  * @file array/cuda/ge_spmm.cuh
@@ -121,7 +122,7 @@ void GESpMMCsr(
   const DType* efeat_data = efeat.Ptr<DType>();
   DType* out_data = out.Ptr<DType>();
 
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
 
   const int ntx = 32;
   const int nty = 32;

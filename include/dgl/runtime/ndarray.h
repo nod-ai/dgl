@@ -17,16 +17,16 @@
 #include "serializer.h"
 #include "shared_mem.h"
 
-#ifdef DGL_USE_CUDA
-#include <cuda_runtime.h>
+#ifdef DGL_USE_ROCM
+#include <hip/hip_runtime.h>
 
 #define BF16_ENABLED (defined(CUDART_VERSION) && CUDART_VERSION >= 11000)
 
-#include <cuda_fp16.h>
+#include <hip/hip_fp16.h>
 #if BF16_ENABLED
-#include <cuda_bf16.h>
+#include <hip/hip_bf16.h>
 #endif  // BF16_ENABLED
-#endif  // DGL_USE_CUDA
+#endif  // DGL_USE_ROCM
 
 // forward declaration
 inline std::ostream& operator<<(std::ostream& os, DGLDataType t);
@@ -57,12 +57,12 @@ GEN_DGLDATATYPETRAITS_FOR(int64_t, kDGLInt, 64);
 // arrays, so I'm just converting uints to signed DTypes.
 GEN_DGLDATATYPETRAITS_FOR(uint32_t, kDGLInt, 32);
 GEN_DGLDATATYPETRAITS_FOR(uint64_t, kDGLInt, 64);
-#ifdef DGL_USE_CUDA
+#ifdef DGL_USE_ROCM
 GEN_DGLDATATYPETRAITS_FOR(__half, kDGLFloat, 16);
 #if BF16_ENABLED
-GEN_DGLDATATYPETRAITS_FOR(__nv_bfloat16, kDGLBfloat, 16);
+GEN_DGLDATATYPETRAITS_FOR(__hip_bfloat16, kDGLBfloat, 16);
 #endif  // BF16_ENABLED
-#endif  // DGL_USE_CUDA
+#endif  // DGL_USE_ROCM
 GEN_DGLDATATYPETRAITS_FOR(float, kDGLFloat, 32);
 GEN_DGLDATATYPETRAITS_FOR(double, kDGLFloat, 64);
 #undef GEN_DGLDATATYPETRAITS_FOR
@@ -185,7 +185,7 @@ class NDArray {
    *     CachingHostAllocator for allocating pinned memory and copying data
    *     from the current NDAarray. As a result, PyTorch is responsible for
    *     managing the lifecycle of the returned NDArray, including deciding
-   *     when to flush the data for reuse or call cudaFreeHost. The current
+   *     when to flush the data for reuse or call hipHostFree. The current
    *     context must be kDGLCPU, otherwise, an error will be thrown.
    */
   inline NDArray PinMemory();
@@ -194,7 +194,7 @@ class NDArray {
    * @brief In-place method to pin the current array by calling PinContainer
    *        on the underlying NDArray:Container.
    * @note This is an in-place method that flags the memory as page-locked by
-   *     utilizing cudaHostRegister at the underlying level to pin the current
+   *     utilizing hipHostRegister at the underlying level to pin the current
    *     instance of NDArray. The current context must be kDGLCPU, otherwise,
    *     an error will be thrown.
    */
@@ -523,7 +523,7 @@ inline void NDArray::CopyFrom(const NDArray& other) {
     // Pinned by PyTorch
     if (cpu_data->pinned_by_pytorch_) {
       // To ensure correct behavior, the event must be recorded after
-      // cudaMemcpyAsync as long as the memory is pinned by PyTorch.
+      // hipMemcpyAsync as long as the memory is pinned by PyTorch.
       void* pytorch_ctx = cpu_data->pytorch_ctx_;
       RecordedCopyFromTo(
           &(other.data_->dl_tensor), &(data_->dl_tensor), pytorch_ctx);
@@ -549,7 +549,7 @@ inline void NDArray::CopyTo(const NDArray& other) const {
     // pinned by PyTorch
     if (cpu_data->pinned_by_pytorch_) {
       // To ensure correct behavior, the event must be recorded after
-      // cudaMemcpyAsync as long as the memory is pinned by PyTorch.
+      // hipMemcpyAsync as long as the memory is pinned by PyTorch.
       void* pytorch_ctx = cpu_data->pytorch_ctx_;
       RecordedCopyFromTo(
           &(data_->dl_tensor), &(other.data_->dl_tensor), pytorch_ctx);

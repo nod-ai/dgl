@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 /**
  *  Copyright (c) 2021 by contributors.
  * @file array/cuda/spmat_op_impl_coo.cu
@@ -72,7 +73,7 @@ __global__ void _COOGetRowNNZKernel(
 
 template <DGLDeviceType XPU, typename IdType>
 int64_t COOGetRowNNZ(COOMatrix coo, int64_t row) {
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   const auto& ctx = coo.row->ctx;
   IdType nnz = coo.row->shape[0];
   IdType nt = 1024;
@@ -103,7 +104,7 @@ __global__ void _COOGetAllRowNNZKernel(
 
 template <DGLDeviceType XPU, typename IdType>
 NDArray COOGetRowNNZ(COOMatrix coo, NDArray rows) {
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   const auto& ctx = coo.row->ctx;
   IdType nnz = coo.row->shape[0];
   IdType num_rows = coo.num_rows;

@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 /**
  *  Copyright (c) 2021 by Contributors
  * @file array/cuda/cuda_filter.cc
@@ -6,7 +7,7 @@
 
 #include <dgl/runtime/device_api.h>
 
-#include <cub/cub.cuh>
+#include <hipcub/hipcub.hpp>
 
 #include "../../runtime/cuda/cuda_common.h"
 #include "../../runtime/cuda/cuda_hashtable.cuh"
@@ -45,7 +46,7 @@ IdArray _PerformFilter(const OrderedHashTable<IdType>& table, IdArray test) {
   const auto& ctx = test->ctx;
   auto device = runtime::DeviceAPI::Get(ctx);
   const int64_t size = test->shape[0];
-  cudaStream_t cudaStream = runtime::getCurrentCUDAStream();
+  hipStream_t cudaStream = runtime::getCurrentCUDAStream();
 
   if (size == 0) {
     return test;
@@ -74,12 +75,12 @@ IdArray _PerformFilter(const OrderedHashTable<IdType>& table, IdArray test) {
   // generate prefix-sum
   {
     size_t workspace_bytes;
-    CUDA_CALL(cub::DeviceScan::ExclusiveSum(
+    CUDA_CALL(hipcub::DeviceScan::ExclusiveSum(
         nullptr, workspace_bytes, static_cast<IdType*>(nullptr),
         static_cast<IdType*>(nullptr), size + 1, cudaStream));
     void* workspace = device->AllocWorkspace(ctx, workspace_bytes);
 
-    CUDA_CALL(cub::DeviceScan::ExclusiveSum(
+    CUDA_CALL(hipcub::DeviceScan::ExclusiveSum(
         workspace, workspace_bytes, prefix, prefix, size + 1, cudaStream));
     device->FreeWorkspace(ctx, workspace);
   }
@@ -109,7 +110,7 @@ class CudaFilterSet : public Filter {
  public:
   explicit CudaFilterSet(IdArray array)
       : table_(array->shape[0], array->ctx, runtime::getCurrentCUDAStream()) {
-    cudaStream_t cudaStream = runtime::getCurrentCUDAStream();
+    hipStream_t cudaStream = runtime::getCurrentCUDAStream();
     table_.FillWithUnique(
         static_cast<const IdType*>(array->data), array->shape[0], cudaStream);
   }

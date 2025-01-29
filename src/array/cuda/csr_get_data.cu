@@ -36,7 +36,7 @@ NDArray CSRGetData(
   IdArray rst = NDArray::Empty({rstlen}, weights->dtype, rows->ctx);
   if (rstlen == 0) return rst;
 
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   const int nt = cuda::FindNumThreads(rstlen);
   const int nb = (rstlen + nt - 1) / nt;
   if (return_eids)
@@ -67,12 +67,12 @@ template NDArray CSRGetData<kDGLCUDA, int64_t, __half>(
     CSRMatrix csr, NDArray rows, NDArray cols, bool return_eids,
     NDArray weights, __half filler);
 #if BF16_ENABLED
-template NDArray CSRGetData<kDGLCUDA, int32_t, __nv_bfloat16>(
+template NDArray CSRGetData<kDGLCUDA, int32_t, __hip_bfloat16>(
     CSRMatrix csr, NDArray rows, NDArray cols, bool return_eids,
-    NDArray weights, __nv_bfloat16 filler);
-template NDArray CSRGetData<kDGLCUDA, int64_t, __nv_bfloat16>(
+    NDArray weights, __hip_bfloat16 filler);
+template NDArray CSRGetData<kDGLCUDA, int64_t, __hip_bfloat16>(
     CSRMatrix csr, NDArray rows, NDArray cols, bool return_eids,
-    NDArray weights, __nv_bfloat16 filler);
+    NDArray weights, __hip_bfloat16 filler);
 #endif  // BF16_ENABLED
 template NDArray CSRGetData<kDGLCUDA, int32_t, float>(
     CSRMatrix csr, NDArray rows, NDArray cols, bool return_eids,

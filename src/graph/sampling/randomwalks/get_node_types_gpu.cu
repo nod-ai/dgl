@@ -4,7 +4,7 @@
  * @brief DGL sampler
  */
 
-#include <cuda_runtime.h>
+#include <hip/hip_runtime.h>
 #include <dgl/array.h>
 #include <dgl/base_heterograph.h>
 #include <dgl/runtime/device_api.h>

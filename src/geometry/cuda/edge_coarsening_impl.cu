@@ -1,9 +1,10 @@
+#include "hip/hip_runtime.h"
 /**
  *  Copyright (c) 2019 by Contributors
  * @file geometry/cuda/edge_coarsening_impl.cu
  * @brief Edge coarsening CUDA implementation
  */
-#include <curand_kernel.h>
+#include <hiprand/hiprand_kernel.h>
 #include <dgl/array.h>
 #include <dgl/random.h>
 #include <dmlc/thread_local.h>
@@ -32,9 +33,9 @@ __global__ void generate_uniform_kernel(
     float *ret_values, size_t num, uint64_t seed) {
   size_t id = blockIdx.x * blockDim.x + threadIdx.x;
   if (id < num) {
-    curandState state;
-    curand_init(seed, id, 0, &state);
-    ret_values[id] = curand_uniform(&state);
+    hiprandState state;
+    hiprand_init(seed, id, 0, &state);
+    ret_values[id] = hiprand_uniform(&state);
   }
 }
 
@@ -116,7 +117,7 @@ __global__ void weighted_respond_kernel(
 template <typename IdType>
 bool Colorize(IdType *result_data, int64_t num_nodes, float *const prop) {
   // initial done signal
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   CUDA_KERNEL_CALL(init_done_kernel, 1, 1, 0, stream);
 
   // generate color prop for each node
@@ -132,8 +133,8 @@ bool Colorize(IdType *result_data, int64_t num_nodes, float *const prop) {
       colorize_kernel, num_blocks, num_threads, 0, stream, prop, num_nodes,
       result_data);
   bool done_h = false;
-  CUDA_CALL(cudaMemcpyFromSymbol(
-      &done_h, done_d, sizeof(done_h), 0, cudaMemcpyDeviceToHost));
+  CUDA_CALL(hipMemcpyFromSymbol(
+      &done_h, HIP_SYMBOL(done_d), sizeof(done_h), 0, hipMemcpyDeviceToHost));
   return done_h;
 }
 
@@ -155,7 +156,7 @@ bool Colorize(IdType *result_data, int64_t num_nodes, float *const prop) {
 template <DGLDeviceType XPU, typename FloatType, typename IdType>
 void WeightedNeighborMatching(
     const aten::CSRMatrix &csr, const NDArray weight, IdArray result) {
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   const auto &ctx = result->ctx;
   auto device = runtime::DeviceAPI::Get(ctx);
   device->SetDevice(ctx);
@@ -216,7 +217,7 @@ void NeighborMatching(const aten::CSRMatrix &csr, IdArray result) {
   device->SetDevice(ctx);
 
   // generate random weights
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   NDArray weight = NDArray::Empty(
       {num_edges}, DGLDataType{kDGLFloat, sizeof(float) * 8, 1}, ctx);
   float *weight_data = static_cast<float *>(weight->data);

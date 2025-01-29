@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 /**
  *  Copyright (c) 2020 by Contributors
  * @file array/cuda/gather_mm.cu
@@ -20,54 +21,54 @@ namespace {
 /** @brief Call cuBLAS GEMM API for dense matmul operation for float and double.
  */
 template <typename DType>
-cublasStatus_t cublasGemm(
-    cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb,
+hipblasStatus_t cublasGemm(
+    hipblasHandle_t handle, hipblasOperation_t transa, hipblasOperation_t transb,
     int m, int n, int k, const DType* alpha, const DType* A, int lda,
     const DType* B, int ldb, const DType* beta, DType* C, int ldc) {
   LOG(INFO) << "Not supported dtype";
-  return CUBLAS_STATUS_EXECUTION_FAILED;
+  return HIPBLAS_STATUS_EXECUTION_FAILED;
 }
 
 template <>
-cublasStatus_t cublasGemm<__half>(
-    cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb,
+hipblasStatus_t cublasGemm<__half>(
+    hipblasHandle_t handle, hipblasOperation_t transa, hipblasOperation_t transb,
     int m, int n, int k, const __half* alpha, const __half* A, int lda,
     const __half* B, int ldb, const __half* beta, __half* C, int ldc) {
-  return cublasHgemm(
+  return hipblasHgemm(
       handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
 }
 
 #if BF16_ENABLED
 template <>
-cublasStatus_t cublasGemm<__nv_bfloat16>(
-    cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb,
-    int m, int n, int k, const __nv_bfloat16* alpha, const __nv_bfloat16* A,
-    int lda, const __nv_bfloat16* B, int ldb, const __nv_bfloat16* beta,
-    __nv_bfloat16* C, int ldc) {
+hipblasStatus_t cublasGemm<__hip_bfloat16>(
+    hipblasHandle_t handle, hipblasOperation_t transa, hipblasOperation_t transb,
+    int m, int n, int k, const __hip_bfloat16* alpha, const __hip_bfloat16* A,
+    int lda, const __hip_bfloat16* B, int ldb, const __hip_bfloat16* beta,
+    __hip_bfloat16* C, int ldc) {
   float alpha_float = __bfloat162float(*alpha);
   float beta_float = __bfloat162float(*beta);
-  return cublasGemmEx(
-      handle, transa, transb, m, n, k, &alpha_float, A, CUDA_R_16BF, lda, B,
-      CUDA_R_16BF, ldb, &beta_float, C, CUDA_R_16BF, ldc, CUBLAS_COMPUTE_32F,
+  return hipblasGemmEx_v2(
+      handle, transa, transb, m, n, k, &alpha_float, A, HIP_R_16BF, lda, B,
+      HIP_R_16BF, ldb, &beta_float, C, HIP_R_16BF, ldc, HIPBLAS_COMPUTE_32F,
       CUBLAS_GEMM_DEFAULT_TENSOR_OP);
 }
 #endif  // BF16_ENABLED
 
 template <>
-cublasStatus_t cublasGemm<float>(
-    cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb,
+hipblasStatus_t cublasGemm<float>(
+    hipblasHandle_t handle, hipblasOperation_t transa, hipblasOperation_t transb,
     int m, int n, int k, const float* alpha, const float* A, int lda,
     const float* B, int ldb, const float* beta, float* C, int ldc) {
-  return cublasSgemm(
+  return hipblasSgemm(
       handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
 }
 
 template <>
-cublasStatus_t cublasGemm<double>(
-    cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb,
+hipblasStatus_t cublasGemm<double>(
+    hipblasHandle_t handle, hipblasOperation_t transa, hipblasOperation_t transb,
     int m, int n, int k, const double* alpha, const double* A, int lda,
     const double* B, int ldb, const double* beta, double* C, int ldc) {
-  return cublasDgemm(
+  return hipblasDgemm(
       handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
 }
 
@@ -203,7 +204,7 @@ void SegmentMM(
     const NDArray A, const NDArray B, NDArray C, const NDArray seglen_A,
     bool a_trans, bool b_trans) {
   auto device = runtime::DeviceAPI::Get(A->ctx);
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   const DType* A_data = A.Ptr<DType>();
   const DType* B_data = B.Ptr<DType>();
   const IdType* seglen_A_data = seglen_A.Ptr<IdType>();
@@ -215,8 +216,8 @@ void SegmentMM(
 
   auto* thr_entry = runtime::CUDAThreadEntry::ThreadLocal();
   if (!thr_entry->cublas_handle)
-    CUBLAS_CALL(cublasCreate(&(thr_entry->cublas_handle)));
-  CUBLAS_CALL(cublasSetStream(thr_entry->cublas_handle, stream));
+    CUBLAS_CALL(hipblasCreate(&(thr_entry->cublas_handle)));
+  CUBLAS_CALL(hipblasSetStream(thr_entry->cublas_handle, stream));
 
   IdType m_offset = 0;
   for (IdType etype = 0; etype < num_rel; ++etype) {
@@ -226,10 +227,10 @@ void SegmentMM(
     n = B->shape[2];  // cols of B
     k = B->shape[1];  // cols of A == rows of B
     int ldb = n, lda = k, ldc = n;
-    cublasOperation_t transB = CUBLAS_OP_N;
-    cublasOperation_t transA = CUBLAS_OP_N;
+    hipblasOperation_t transB = HIPBLAS_OP_N;
+    hipblasOperation_t transA = HIPBLAS_OP_N;
     if (b_trans) {
-      transB = CUBLAS_OP_T;
+      transB = HIPBLAS_OP_T;
       ldb = n, lda = n, ldc = k;
       std::swap(n, k);
     }
@@ -248,7 +249,7 @@ template <int XPU, typename IdType, typename DType>
 void SegmentMMBackwardB(
     const NDArray A, const NDArray dC, NDArray dB, const NDArray seglen) {
   auto device = runtime::DeviceAPI::Get(A->ctx);
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   const DType* A_data = A.Ptr<DType>();
   const DType* dC_data = dC.Ptr<DType>();
   const IdType* seglen_data = seglen.Ptr<IdType>();
@@ -260,8 +261,8 @@ void SegmentMMBackwardB(
 
   auto* thr_entry = runtime::CUDAThreadEntry::ThreadLocal();
   if (!thr_entry->cublas_handle)
-    CUBLAS_CALL(cublasCreate(&(thr_entry->cublas_handle)));
-  CUBLAS_CALL(cublasSetStream(thr_entry->cublas_handle, stream));
+    CUBLAS_CALL(hipblasCreate(&(thr_entry->cublas_handle)));
+  CUBLAS_CALL(hipblasSetStream(thr_entry->cublas_handle, stream));
 
   IdType k_offset = 0;
   for (IdType etype = 0; etype < num_rel; ++etype) {
@@ -271,8 +272,8 @@ void SegmentMMBackwardB(
     CHECK_LE(k_offset + k, A->shape[0])
         << "Segement index out of bound of A->shape[0].";
     int lddC = m, ldA = n, lddB = m;
-    cublasOperation_t trans_dC = CUBLAS_OP_N;
-    cublasOperation_t trans_A = CUBLAS_OP_T;
+    hipblasOperation_t trans_dC = HIPBLAS_OP_N;
+    hipblasOperation_t trans_A = HIPBLAS_OP_T;
     CUBLAS_CALL(cublasGemm<DType>(
         thr_entry->cublas_handle, trans_dC, trans_A, m, n, k, &alpha,
         dC_data + dC_offset, lddC, A_data + A_offset, ldA, &beta,
@@ -299,7 +300,7 @@ void GatherMM(
     const NDArray A, const NDArray B, NDArray C, const NDArray idx_a,
     const NDArray idx_b) {
   auto device = runtime::DeviceAPI::Get(A->ctx);
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   int64_t out_len = B->shape[2];  // cols of B
   int64_t in_len = A->shape[1];   // cols of A
   const int64_t tot_num_rows = A->shape[0];
@@ -332,7 +333,7 @@ void GatherMMScatter(
     const NDArray A, const NDArray B, NDArray C, const NDArray idx_a,
     const NDArray idx_b, const NDArray idx_c) {
   auto device = runtime::DeviceAPI::Get(A->ctx);
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   const IdType* idx_c_data = idx_c.Ptr<IdType>();
   int64_t out_len = (B->ndim == 2) ? B->shape[1] : B->shape[2];  // cols of B
   int64_t in_len = A->shape[1];                                  // cols of A
@@ -367,10 +368,10 @@ template void GatherMM<kDGLCUDA, int64_t, __half>(
     const NDArray A, const NDArray B, NDArray C, const NDArray idx_a,
     const NDArray idx_b);
 #if BF16_ENABLED
-template void GatherMM<kDGLCUDA, int32_t, __nv_bfloat16>(
+template void GatherMM<kDGLCUDA, int32_t, __hip_bfloat16>(
     const NDArray A, const NDArray B, NDArray C, const NDArray idx_a,
     const NDArray idx_b);
-template void GatherMM<kDGLCUDA, int64_t, __nv_bfloat16>(
+template void GatherMM<kDGLCUDA, int64_t, __hip_bfloat16>(
     const NDArray A, const NDArray B, NDArray C, const NDArray idx_a,
     const NDArray idx_b);
 #endif  // BF16_ENABLED
@@ -394,10 +395,10 @@ template void GatherMMScatter<kDGLCUDA, int64_t, __half>(
     const NDArray A, const NDArray B, NDArray C, const NDArray idx_a,
     const NDArray idx_b, const NDArray idx_c);
 #if BF16_ENABLED
-template void GatherMMScatter<kDGLCUDA, int32_t, __nv_bfloat16>(
+template void GatherMMScatter<kDGLCUDA, int32_t, __hip_bfloat16>(
     const NDArray A, const NDArray B, NDArray C, const NDArray idx_a,
     const NDArray idx_b, const NDArray idx_c);
-template void GatherMMScatter<kDGLCUDA, int64_t, __nv_bfloat16>(
+template void GatherMMScatter<kDGLCUDA, int64_t, __hip_bfloat16>(
     const NDArray A, const NDArray B, NDArray C, const NDArray idx_a,
     const NDArray idx_b, const NDArray idx_c);
 #endif  // BF16_ENABLED
@@ -421,10 +422,10 @@ template void SegmentMM<kDGLCUDA, int64_t, __half>(
     const NDArray A, const NDArray B, NDArray C, const NDArray seglen_A,
     bool a_trans, bool b_trans);
 #if BF16_ENABLED
-template void SegmentMM<kDGLCUDA, int32_t, __nv_bfloat16>(
+template void SegmentMM<kDGLCUDA, int32_t, __hip_bfloat16>(
     const NDArray A, const NDArray B, NDArray C, const NDArray seglen_A,
     bool a_trans, bool b_trans);
-template void SegmentMM<kDGLCUDA, int64_t, __nv_bfloat16>(
+template void SegmentMM<kDGLCUDA, int64_t, __hip_bfloat16>(
     const NDArray A, const NDArray B, NDArray C, const NDArray seglen_A,
     bool a_trans, bool b_trans);
 #endif  // BF16_ENABLED
@@ -446,9 +447,9 @@ template void SegmentMMBackwardB<kDGLCUDA, int32_t, __half>(
 template void SegmentMMBackwardB<kDGLCUDA, int64_t, __half>(
     const NDArray A, const NDArray dC, NDArray dB, const NDArray seglen);
 #if BF16_ENABLED
-template void SegmentMMBackwardB<kDGLCUDA, int32_t, __nv_bfloat16>(
+template void SegmentMMBackwardB<kDGLCUDA, int32_t, __hip_bfloat16>(
     const NDArray A, const NDArray dC, NDArray dB, const NDArray seglen);
-template void SegmentMMBackwardB<kDGLCUDA, int64_t, __nv_bfloat16>(
+template void SegmentMMBackwardB<kDGLCUDA, int64_t, __hip_bfloat16>(
     const NDArray A, const NDArray dC, NDArray dB, const NDArray seglen);
 #endif  // BF16_ENABLED
 template void SegmentMMBackwardB<kDGLCUDA, int32_t, float>(

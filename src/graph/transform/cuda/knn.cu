@@ -1,16 +1,17 @@
+#include "hip/hip_runtime.h"
 /**
  *  Copyright (c) 2020 by Contributors
  * @file graph/transform/cuda/knn.cu
  * @brief k-nearest-neighbor (KNN) implementation (cuda)
  */
 
-#include <curand_kernel.h>
+#include <hiprand/hiprand_kernel.h>
 #include <dgl/array.h>
 #include <dgl/random.h>
 #include <dgl/runtime/device_api.h>
 
 #include <algorithm>
-#include <cub/cub.cuh>  // NOLINT
+#include <hipcub/hipcub.hpp>  // NOLINT
 #include <limits>
 #include <string>
 #include <type_traits>
@@ -467,7 +468,7 @@ void BruteForceKNNCuda(
     const NDArray& data_points, const IdArray& data_offsets,
     const NDArray& query_points, const IdArray& query_offsets, const int k,
     IdArray result) {
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   const auto& ctx = data_points->ctx;
   auto device = runtime::DeviceAPI::Get(ctx);
   const int64_t batch_size = data_offsets->shape[0] - 1;
@@ -512,7 +513,7 @@ void BruteForceKNNSharedCuda(
     const NDArray& data_points, const IdArray& data_offsets,
     const NDArray& query_points, const IdArray& query_offsets, const int k,
     IdArray result) {
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   const auto& ctx = data_points->ctx;
   auto device = runtime::DeviceAPI::Get(ctx);
   const int64_t batch_size = data_offsets->shape[0] - 1;
@@ -528,8 +529,8 @@ void BruteForceKNNSharedCuda(
   // get max shared memory per block in bytes
   // determine block size according to this value
   int max_sharedmem_per_block = 0;
-  CUDA_CALL(cudaDeviceGetAttribute(
-      &max_sharedmem_per_block, cudaDevAttrMaxSharedMemoryPerBlock,
+  CUDA_CALL(hipDeviceGetAttribute(
+      &max_sharedmem_per_block, hipDeviceAttributeMaxSharedMemoryPerBlock,
       ctx.device_id));
   const int64_t single_shared_mem = static_cast<int64_t>(Pow2Align<size_t>(
       (k + 2 * feature_size) * sizeof(FloatType) + k * sizeof(IdType),
@@ -552,17 +553,17 @@ void BruteForceKNNSharedCuda(
       GetNumBlockPerSegment, temp_num_blocks, temp_block_size, 0, stream,
       query_offsets_data, num_block_per_segment, batch_size, block_size);
   size_t prefix_temp_size = 0;
-  CUDA_CALL(cub::DeviceScan::ExclusiveSum(
+  CUDA_CALL(hipcub::DeviceScan::ExclusiveSum(
       nullptr, prefix_temp_size, num_block_per_segment, num_block_prefixsum,
       batch_size, stream));
   void* prefix_temp = device->AllocWorkspace(ctx, prefix_temp_size);
-  CUDA_CALL(cub::DeviceScan::ExclusiveSum(
+  CUDA_CALL(hipcub::DeviceScan::ExclusiveSum(
       prefix_temp, prefix_temp_size, num_block_per_segment, num_block_prefixsum,
       batch_size, stream));
   device->FreeWorkspace(ctx, prefix_temp);
 
   // wait for results
-  CUDA_CALL(cudaStreamSynchronize(stream));
+  CUDA_CALL(hipStreamSynchronize(stream));
 
   int64_t num_blocks = 0, final_elem = 0,
           copyoffset = (batch_size - 1) * sizeof(IdType);
@@ -603,10 +604,10 @@ void BruteForceKNNSharedCuda(
 
 /** @brief Setup rng state for nn-descent */
 __global__ void SetupRngKernel(
-    curandState* states, const uint64_t seed, const size_t n) {
+    hiprandState* states, const uint64_t seed, const size_t n) {
   size_t id = blockIdx.x * blockDim.x + threadIdx.x;
   if (id < n) {
-    curand_init(seed, id, 0, states + id);
+    hiprand_init(seed, id, 0, states + id);
   }
 }
 
@@ -622,8 +623,8 @@ __global__ void RandomInitNeighborsKernel(
   const IdType point_idx = blockIdx.x * blockDim.x + threadIdx.x;
   IdType batch_idx = 0;
   if (point_idx >= offsets[batch_size]) return;
-  curandState state;
-  curand_init(seed, point_idx, 0, &state);
+  hiprandState state;
+  hiprand_init(seed, point_idx, 0, &state);
 
   // find the segment location in the input batch
   for (IdType b = 0; b < batch_size + 1; ++b) {
@@ -646,7 +647,7 @@ __global__ void RandomInitNeighborsKernel(
     current_central_nodes[i] = point_idx;
   }
   for (IdType i = k; i < segment_size; ++i) {
-    const IdType j = static_cast<IdType>(curand(&state) % (i + 1));
+    const IdType j = static_cast<IdType>(hiprand(&state) % (i + 1));
     if (j < k) current_neighbors[j] = i + segment_start;
   }
 
@@ -674,8 +675,8 @@ __global__ void FindCandidatesKernel(
   const IdType point_idx = blockIdx.x * blockDim.x + threadIdx.x;
   IdType batch_idx = 0;
   if (point_idx >= offsets[batch_size]) return;
-  curandState state;
-  curand_init(seed, point_idx, 0, &state);
+  hiprandState state;
+  hiprand_init(seed, point_idx, 0, &state);
 
   // find the segment location in the input batch
   for (IdType b = 0; b < batch_size + 1; ++b) {
@@ -711,7 +712,7 @@ __global__ void FindCandidatesKernel(
     if (curr_num < num_candidates) {
       candidate_data[curr_num] = candidate;
     } else {
-      IdType pos = static_cast<IdType>(curand(&state) % (curr_num + 1));
+      IdType pos = static_cast<IdType>(hiprand(&state) % (curr_num + 1));
       if (pos < num_candidates) candidate_data[pos] = candidate;
     }
     ++candidate_array[0];
@@ -732,7 +733,7 @@ __global__ void FindCandidatesKernel(
       if (curr_num < num_candidates) {
         candidate_data[curr_num] = reverse_candidate;
       } else {
-        IdType pos = static_cast<IdType>(curand(&state) % (curr_num + 1));
+        IdType pos = static_cast<IdType>(hiprand(&state) % (curr_num + 1));
         if (pos < num_candidates) candidate_data[pos] = reverse_candidate;
       }
       ++candidate_array[0];
@@ -873,7 +874,7 @@ template <DGLDeviceType XPU, typename FloatType, typename IdType>
 void NNDescent(
     const NDArray& points, const IdArray& offsets, IdArray result, const int k,
     const int num_iters, const int num_candidates, const double delta) {
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   const auto& ctx = points->ctx;
   auto device = runtime::DeviceAPI::Get(ctx);
   const int64_t num_nodes = points->shape[0];
@@ -887,7 +888,7 @@ void NNDescent(
   uint64_t seed;
   int warp_size = 0;
   CUDA_CALL(
-      cudaDeviceGetAttribute(&warp_size, cudaDevAttrWarpSize, ctx.device_id));
+      hipDeviceGetAttribute(&warp_size, hipDeviceAttributeWarpSize, ctx.device_id));
   // We don't need large block sizes, since there's not much inter-thread
   // communication
   int64_t block_size = warp_size;
@@ -911,7 +912,7 @@ void NNDescent(
   IdType* total_num_updates_d =
       static_cast<IdType*>(device->AllocWorkspace(ctx, sizeof(IdType)));
 
-  CUDA_CALL(cub::DeviceReduce::Sum(
+  CUDA_CALL(hipcub::DeviceReduce::Sum(
       nullptr, sum_temp_size, num_updates, total_num_updates_d, num_nodes,
       stream));
   IdType* sum_temp_storage =
@@ -942,7 +943,7 @@ void NNDescent(
         feature_size);
 
     total_num_updates = 0;
-    CUDA_CALL(cub::DeviceReduce::Sum(
+    CUDA_CALL(hipcub::DeviceReduce::Sum(
         sum_temp_storage, sum_temp_size, num_updates, total_num_updates_d,
         num_nodes, stream));
     device->CopyDataFromTo(

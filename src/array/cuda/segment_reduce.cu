@@ -60,10 +60,10 @@ template void SegmentReduce<kDGLCUDA, int64_t, __half>(
     const std::string& op, NDArray feat, NDArray offsets, NDArray out,
     NDArray arg);
 #if BF16_ENABLED
-template void SegmentReduce<kDGLCUDA, int32_t, __nv_bfloat16>(
+template void SegmentReduce<kDGLCUDA, int32_t, __hip_bfloat16>(
     const std::string& op, NDArray feat, NDArray offsets, NDArray out,
     NDArray arg);
-template void SegmentReduce<kDGLCUDA, int64_t, __nv_bfloat16>(
+template void SegmentReduce<kDGLCUDA, int64_t, __hip_bfloat16>(
     const std::string& op, NDArray feat, NDArray offsets, NDArray out,
     NDArray arg);
 #endif  // BF16_ENABLED
@@ -85,9 +85,9 @@ template void ScatterAdd<kDGLCUDA, int32_t, __half>(
 template void ScatterAdd<kDGLCUDA, int64_t, __half>(
     NDArray feat, NDArray idx, NDArray out);
 #if BF16_ENABLED
-template void ScatterAdd<kDGLCUDA, int32_t, __nv_bfloat16>(
+template void ScatterAdd<kDGLCUDA, int32_t, __hip_bfloat16>(
     NDArray feat, NDArray idx, NDArray out);
-template void ScatterAdd<kDGLCUDA, int64_t, __nv_bfloat16>(
+template void ScatterAdd<kDGLCUDA, int64_t, __hip_bfloat16>(
     NDArray feat, NDArray idx, NDArray out);
 #endif  // BF16_ENABLED
 template void ScatterAdd<kDGLCUDA, int32_t, float>(
@@ -108,11 +108,11 @@ template void UpdateGradMinMax_hetero<kDGLCUDA, int64_t, __half>(
     const std::vector<NDArray>& feat, const std::vector<NDArray>& idx,
     const std::vector<NDArray>& idx_etype, std::vector<NDArray>* out);
 #if BF16_ENABLED
-template void UpdateGradMinMax_hetero<kDGLCUDA, int32_t, __nv_bfloat16>(
+template void UpdateGradMinMax_hetero<kDGLCUDA, int32_t, __hip_bfloat16>(
     const HeteroGraphPtr& g, const std::string& op,
     const std::vector<NDArray>& feat, const std::vector<NDArray>& idx,
     const std::vector<NDArray>& idx_etype, std::vector<NDArray>* out);
-template void UpdateGradMinMax_hetero<kDGLCUDA, int64_t, __nv_bfloat16>(
+template void UpdateGradMinMax_hetero<kDGLCUDA, int64_t, __hip_bfloat16>(
     const HeteroGraphPtr& g, const std::string& op,
     const std::vector<NDArray>& feat, const std::vector<NDArray>& idx,
     const std::vector<NDArray>& idx_etype, std::vector<NDArray>* out);
@@ -139,9 +139,9 @@ template void BackwardSegmentCmp<kDGLCUDA, int32_t, __half>(
 template void BackwardSegmentCmp<kDGLCUDA, int64_t, __half>(
     NDArray feat, NDArray arg, NDArray out);
 #if BF16_ENABLED
-template void BackwardSegmentCmp<kDGLCUDA, int32_t, __nv_bfloat16>(
+template void BackwardSegmentCmp<kDGLCUDA, int32_t, __hip_bfloat16>(
     NDArray feat, NDArray arg, NDArray out);
-template void BackwardSegmentCmp<kDGLCUDA, int64_t, __nv_bfloat16>(
+template void BackwardSegmentCmp<kDGLCUDA, int64_t, __hip_bfloat16>(
     NDArray feat, NDArray arg, NDArray out);
 #endif  // BF16_ENABLED
 template void BackwardSegmentCmp<kDGLCUDA, int32_t, float>(

@@ -174,7 +174,7 @@ class DeviceAPI {
       DGLContext ctx, DGLStreamHandle event_src, DGLStreamHandle event_dst);
 
   /**
-   * @brief Pin host memory using cudaHostRegister().
+   * @brief Pin host memory using hipHostRegister().
    *
    * @param ptr The host memory pointer to be pinned.
    * @param nbytes The size to be pinned.
@@ -183,7 +183,7 @@ class DeviceAPI {
   DGL_DLL virtual bool PinData(void* ptr, size_t nbytes);
 
   /**
-   * @brief Unpin host memory using cudaHostUnregister().
+   * @brief Unpin host memory using hipHostUnregister().
    *
    * @param ptr The host memory pointer to be unpinned.
    */
@@ -203,7 +203,7 @@ class DeviceAPI {
 
   /**
    * @brief 'Deallocate' the pinned memory from PyTorch CachingHostAllocator.
-   * @note It avoids unnecessary cudaFreeHost calls and puts the memory
+   * @note It avoids unnecessary hipHostFree calls and puts the memory
    *     block into CachingHostAllocator's free list.
    * @param deleter Pointer to the deleter function from PyTorch's
    *     CachingHostAllocator.

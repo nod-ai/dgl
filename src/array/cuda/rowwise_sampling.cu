@@ -1,15 +1,16 @@
+#include "hip/hip_runtime.h"
 /**
  *  Copyright (c) 2021 by Contributors
  * @file array/cuda/rowwise_sampling.cu
  * @brief uniform rowwise sampling
  */
 
-#include <curand_kernel.h>
+#include <hiprand/hiprand_kernel.h>
 #include <dgl/random.h>
 #include <dgl/runtime/device_api.h>
 #include <dgl/runtime/tensordispatch.h>
 
-#include <cub/cub.cuh>
+#include <hipcub/hipcub.hpp>
 #include <numeric>
 
 #include "../../array/cuda/atomic.cuh"
@@ -126,8 +127,8 @@ __global__ void _CSRRowWiseSampleUniformKernel(
   const int64_t last_row =
       min(static_cast<int64_t>(blockIdx.x + 1) * TILE_SIZE, num_rows);
 
-  curandStatePhilox4_32_10_t rng;
-  curand_init(rand_seed * gridDim.x + blockIdx.x, threadIdx.x, 0, &rng);
+  hiprandStatePhilox4_32_10_t rng;
+  hiprand_init(rand_seed * gridDim.x + blockIdx.x, threadIdx.x, 0, &rng);
 
   while (out_row < last_row) {
     const int64_t row = in_rows[out_row];
@@ -151,7 +152,7 @@ __global__ void _CSRRowWiseSampleUniformKernel(
       __syncthreads();
 
       for (int idx = num_picks + threadIdx.x; idx < deg; idx += BLOCK_SIZE) {
-        const int num = curand(&rng) % (idx + 1);
+        const int num = hiprand(&rng) % (idx + 1);
         if (num < num_picks) {
           // use max so as to achieve the replacement order the serial
           // algorithm would have
@@ -204,8 +205,8 @@ __global__ void _CSRRowWiseSampleUniformReplaceKernel(
   const int64_t last_row =
       min(static_cast<int64_t>(blockIdx.x + 1) * TILE_SIZE, num_rows);
 
-  curandStatePhilox4_32_10_t rng;
-  curand_init(rand_seed * gridDim.x + blockIdx.x, threadIdx.x, 0, &rng);
+  hiprandStatePhilox4_32_10_t rng;
+  hiprand_init(rand_seed * gridDim.x + blockIdx.x, threadIdx.x, 0, &rng);
 
   while (out_row < last_row) {
     const int64_t row = in_rows[out_row];
@@ -216,7 +217,7 @@ __global__ void _CSRRowWiseSampleUniformReplaceKernel(
     if (deg > 0) {
       // each thread then blindly copies in rows only if deg > 0.
       for (int idx = threadIdx.x; idx < num_picks; idx += BLOCK_SIZE) {
-        const int64_t edge = curand(&rng) % deg;
+        const int64_t edge = hiprand(&rng) % deg;
         const int64_t out_idx = out_row_start + idx;
         out_rows[out_idx] = row;
         out_cols[out_idx] = in_index[in_row_start + edge];
@@ -237,7 +238,7 @@ COOMatrix _CSRRowWiseSamplingUniform(
     CSRMatrix mat, IdArray rows, const int64_t num_picks, const bool replace) {
   const auto& ctx = rows->ctx;
   auto device = runtime::DeviceAPI::Get(ctx);
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
 
   const int64_t num_rows = rows->shape[0];
   const IdType* const slice_rows = static_cast<const IdType*>(rows->data);
@@ -279,16 +280,16 @@ COOMatrix _CSRRowWiseSamplingUniform(
   IdType* out_ptr = static_cast<IdType*>(
       device->AllocWorkspace(ctx, (num_rows + 1) * sizeof(IdType)));
   size_t prefix_temp_size = 0;
-  CUDA_CALL(cub::DeviceScan::ExclusiveSum(
+  CUDA_CALL(hipcub::DeviceScan::ExclusiveSum(
       nullptr, prefix_temp_size, out_deg, out_ptr, num_rows + 1, stream));
   void* prefix_temp = device->AllocWorkspace(ctx, prefix_temp_size);
-  CUDA_CALL(cub::DeviceScan::ExclusiveSum(
+  CUDA_CALL(hipcub::DeviceScan::ExclusiveSum(
       prefix_temp, prefix_temp_size, out_deg, out_ptr, num_rows + 1, stream));
   device->FreeWorkspace(ctx, prefix_temp);
   device->FreeWorkspace(ctx, out_deg);
 
-  cudaEvent_t copyEvent;
-  CUDA_CALL(cudaEventCreate(&copyEvent));
+  hipEvent_t copyEvent;
+  CUDA_CALL(hipEventCreate(&copyEvent));
 
   NDArray new_len_tensor;
   if (TensorDispatcher::Global()->IsAvailable()) {
@@ -301,10 +302,10 @@ COOMatrix _CSRRowWiseSamplingUniform(
   }
 
   // copy using the internal current stream
-  CUDA_CALL(cudaMemcpyAsync(
+  CUDA_CALL(hipMemcpyAsync(
       new_len_tensor->data, out_ptr + num_rows, sizeof(IdType),
-      cudaMemcpyDeviceToHost, stream));
-  CUDA_CALL(cudaEventRecord(copyEvent, stream));
+      hipMemcpyDeviceToHost, stream));
+  CUDA_CALL(hipEventRecord(copyEvent, stream));
 
   const uint64_t random_seed = RandomEngine::ThreadLocal()->RandInt(1000000000);
 
@@ -329,8 +330,8 @@ COOMatrix _CSRRowWiseSamplingUniform(
   device->FreeWorkspace(ctx, out_ptr);
 
   // wait for copying `new_len` to finish
-  CUDA_CALL(cudaEventSynchronize(copyEvent));
-  CUDA_CALL(cudaEventDestroy(copyEvent));
+  CUDA_CALL(hipEventSynchronize(copyEvent));
+  CUDA_CALL(hipEventDestroy(copyEvent));
 
   const IdType new_len = static_cast<const IdType*>(new_len_tensor->data)[0];
   picked_row = picked_row.CreateView({new_len}, picked_row->dtype);

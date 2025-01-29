@@ -21,7 +21,7 @@
 #ifndef DGL_ARRAY_CUDA_FP16_CUH_
 #define DGL_ARRAY_CUDA_FP16_CUH_
 
-#include <cuda_fp16.h>
+#include <hip/hip_fp16.h>
 
 #include <algorithm>
 
@@ -41,9 +41,9 @@ static __device__ __forceinline__ half min(half a, half b) {
 #endif
 }
 
-#ifdef __CUDACC__
+#ifdef __HIPCC__
 // Arithmetic FP16 operations for architecture >= 5.3 are already defined in
-// cuda_fp16.h
+// hip/hip_fp16.h
 #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 530)
 // CUDA 12.2 adds "emulated" support for older architectures.
 #if defined(CUDART_VERSION) && (CUDART_VERSION < 12020)
@@ -129,6 +129,6 @@ __device__ __forceinline__ bool operator<=(const __half& lh, const __half& rh) {
 }
 #endif  // defined(CUDART_VERSION) && (CUDART_VERSION < 12020)
 #endif  // defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 530)
-#endif  // __CUDACC__
+#endif  // __HIPCC__
 
 #endif  // DGL_ARRAY_CUDA_FP16_CUH_
