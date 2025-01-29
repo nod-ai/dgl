@@ -85,7 +85,12 @@ namespace cuda {
     }                                                                    \
   } while (0)
 
+#ifdef __HIPCC__
+// HIP requires 64-bit mask
+constexpr unsigned long long full_mask = 0xffffffffffffffff;
+#else
 constexpr unsigned int full_mask = 0xffffffff;
+#endif
 
 /**
  * @brief CUDA kernel of g-SDDMM on Coo format.

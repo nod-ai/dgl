@@ -38,7 +38,7 @@ __global__ void _init_edge_table(void *edge_hashmap, int64_t edges_len) {
   auto edge_hashmap_t = static_cast<EdgeItem *>(edge_hashmap);
   int64_t start_idx = (blockIdx.x * TILE_SIZE) + threadIdx.x;
   int64_t last_idx = start_idx + TILE_SIZE;
-#pragma unroll(4)
+#pragma unroll 4
   for (int64_t idx = start_idx; idx < last_idx; idx += BLOCK_SIZE) {
     if (idx < edges_len) {
       EdgeItem *edge = (edge_hashmap_t + idx);
@@ -154,7 +154,7 @@ __global__ void _get_pick_num(
     const int64_t num_dst_nodes) {
   int64_t start_idx = (blockIdx.x * TILE_SIZE) + threadIdx.x;
   int64_t last_idx = start_idx + TILE_SIZE;
-#pragma unroll(4)
+#pragma unroll 4
   for (int64_t idx = start_idx; idx < last_idx; idx += BLOCK_SIZE) {
     if (idx < num_dst_nodes) {
       IdxType &num_unique = num_unique_each_node[idx];

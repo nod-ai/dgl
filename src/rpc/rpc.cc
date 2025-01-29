@@ -28,9 +28,6 @@ namespace rpc {
 
 // Borrow from PyTorch
 
-const char kSocketIfnameEnvVar[] = "TP_SOCKET_IFNAME";
-const char kDefaultUvAddress[] = "127.0.0.1";
-
 RPCStatus SendRPCMessage(const RPCMessage& msg, const int32_t target_id) {
   RPCContext::getInstance()->sender->Send(msg, target_id);
   return kRPCSuccess;

@@ -17,6 +17,16 @@
 
 #include "../workspace_pool.h"
 
+// TODO: Properly for portable HIP code, this should be determined at runtime,
+// but there's a lot of code that assumes this is a compile-time constant, so
+// for now we're hardcoding it. See
+// https://rocm.docs.amd.com/projects/HIP/en/latest/how-to/hip_cpp_language_extensions.html#warpsize
+#ifdef DGL_USE_ROCM
+#define DGL_WARP_SIZE 64
+#else
+#define DGL_WARP_SIZE 32
+#endif
+
 namespace dgl {
 namespace runtime {
 
@@ -152,6 +162,10 @@ inline const char* curandGetErrorString(curandStatus_t error) {
       return "CURAND_STATUS_ARCH_MISMATCH";
     case CURAND_STATUS_INTERNAL_ERROR:
       return "CURAND_STATUS_INTERNAL_ERROR";
+#ifdef DGL_USE_ROCM
+    case HIPRAND_STATUS_NOT_IMPLEMENTED:
+      return "HIPRAND_STATUS_NOT_IMPLEMENTED";
+#endif
   }
   // To suppress compiler warning.
   return "Unrecognized curand error string";
@@ -217,7 +231,7 @@ struct accum_dtype<double> {
   typedef double type;
 };
 
-#if CUDART_VERSION >= 11000
+#if !CUSPARSE_IS_LEGACY
 /**
  * @brief Cast index data type to cusparseIndexType_t.
  */

@@ -40,11 +40,10 @@ namespace cuda {
 template <typename key_t>
 class GpuCache : public runtime::Object {
   constexpr static int set_associativity = 2;
-  constexpr static int WARP_SIZE = 32;
-  constexpr static int bucket_size = WARP_SIZE * set_associativity;
+  constexpr static int bucket_size = DGL_WARP_SIZE * set_associativity;
   using gpu_cache_t = gpu_cache::gpu_cache<
       key_t, uint64_t, std::numeric_limits<key_t>::max(), set_associativity,
-      WARP_SIZE>;
+      DGL_WARP_SIZE>;
 
  public:
   static constexpr const char *_type_key =

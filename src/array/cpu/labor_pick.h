@@ -254,7 +254,7 @@ std::pair<COOMatrix, FloatArray> CSRLaborPick(
       // if hop_map is initialized, get ps from there, otherwise get it from the
       // alternative.
       const auto ps = std::min(
-          ONE, importance_sampling - weighted ? c * hop_map[v] : c * w);
+          ONE, (importance_sampling - weighted) ? c * hop_map[v] : c * w);
       if (rnd <= ps) {
         picked_rdata[num_edges] = rid;
         picked_cdata[num_edges] = v;

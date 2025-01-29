@@ -69,7 +69,7 @@ void gatherMM_SortedEtype(
   DType *C_data = C.Ptr<DType>();
 
   int64_t A_offset = 0, B_offset = 0, C_offset = 0;
-  int64_t m, n, k, h_col, w_row;
+  int64_t m, n, k;
   for (int etype = 0; etype < num_rel; ++etype) {
     assert(
         (a_trans)                  ? A_rel_data[etype]

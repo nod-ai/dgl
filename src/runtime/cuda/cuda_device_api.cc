@@ -24,7 +24,7 @@ class CUDADeviceAPI final : public DeviceAPI {
         break;
       default:
         count = 0;
-        cudaGetLastError();
+        (void)cudaGetLastError();  // clear error
     }
     is_available_ = count > 0;
   }
@@ -187,7 +187,7 @@ class CUDADeviceAPI final : public DeviceAPI {
     }
   }
 
-  DGLStreamHandle CreateStream(DGLContext ctx) {
+  DGLStreamHandle CreateStream(DGLContext ctx) override {
     CUDA_CALL(cudaSetDevice(ctx.device_id));
     cudaStream_t retval;
     // make sure the legacy default stream won't block on this stream
@@ -195,14 +195,15 @@ class CUDADeviceAPI final : public DeviceAPI {
     return static_cast<DGLStreamHandle>(retval);
   }
 
-  void FreeStream(DGLContext ctx, DGLStreamHandle stream) {
+  void FreeStream(DGLContext ctx, DGLStreamHandle stream) override {
     CUDA_CALL(cudaSetDevice(ctx.device_id));
     cudaStream_t cu_stream = static_cast<cudaStream_t>(stream);
     CUDA_CALL(cudaStreamDestroy(cu_stream));
   }
 
   void SyncStreamFromTo(
-      DGLContext ctx, DGLStreamHandle event_src, DGLStreamHandle event_dst) {
+      DGLContext ctx, DGLStreamHandle event_src,
+      DGLStreamHandle event_dst) override {
     CUDA_CALL(cudaSetDevice(ctx.device_id));
     cudaStream_t src_stream = static_cast<cudaStream_t>(event_src);
     cudaStream_t dst_stream = static_cast<cudaStream_t>(event_dst);
@@ -248,7 +249,7 @@ class CUDADeviceAPI final : public DeviceAPI {
     return true;
   }
 
-  void UnpinData(void* ptr) {
+  void UnpinData(void* ptr) override {
     if (ptr == nullptr) return;
     CUDA_CALL(cudaHostUnregister(ptr));
   }
@@ -283,7 +284,7 @@ class CUDADeviceAPI final : public DeviceAPI {
     switch (status) {
       case cudaErrorInvalidValue:
         // might be a normal CPU tensor in CUDA 10.2-
-        cudaGetLastError();  // clear error
+        (void)cudaGetLastError();  // clear error
         break;
       case cudaSuccess:
         result = (attr.type == cudaMemoryTypeHost);
@@ -298,7 +299,7 @@ class CUDADeviceAPI final : public DeviceAPI {
         // initialized.  So we just mark the CUDA context to unavailable and
         // return.
         is_available_ = false;
-        cudaGetLastError();  // clear error
+        (void)cudaGetLastError();  // clear error
         break;
       default:
         LOG(FATAL) << "error while determining memory status: "
