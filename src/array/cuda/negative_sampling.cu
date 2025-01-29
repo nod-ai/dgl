@@ -38,7 +38,7 @@ __global__ void _GlobalUniformNegativeSamplingKernel(
 
   while (tx < num_samples) {
     for (int i = 0; i < num_trials; ++i) {
-      uint4 result = curand4(&rng);
+      uint4 result = hiprand4(&rng);
       // Turns out that result.x is always 0 with the above RNG.
       uint64_t y_hi = result.y >> 16;
       uint64_t y_lo = result.y & 0xFFFF;

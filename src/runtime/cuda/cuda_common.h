@@ -152,6 +152,10 @@ inline const char* curandGetErrorString(hiprandStatus_t error) {
       return "HIPRAND_STATUS_ARCH_MISMATCH";
     case HIPRAND_STATUS_INTERNAL_ERROR:
       return "HIPRAND_STATUS_INTERNAL_ERROR";
+#ifdef DGL_USE_ROCM
+    case HIPRAND_STATUS_NOT_IMPLEMENTED:
+      return "HIPRAND_STATUS_NOT_IMPLEMENTED";
+#endif
   }
   // To suppress compiler warning.
   return "Unrecognized hiprand error string";
@@ -217,7 +221,7 @@ struct accum_dtype<double> {
   typedef double type;
 };
 
-#if CUDART_VERSION >= 11000
+#if !CUSPARSE_IS_LEGACY
 /**
  * @brief Cast index data type to hipsparseIndexType_t.
  */

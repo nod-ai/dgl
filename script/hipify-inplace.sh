@@ -58,6 +58,7 @@ for src in ${srcs[@]}; do
     sed -i 's@\bthrust::cuda::par@thrust::hip::par@g' $src
     sed -i 's@\b__nv_fp8_e4m3\b@__hip_fp8_e4m3@g' $src
     sed -i 's@\b__nv_fp8_e5m2\b@__hip_fp8_e5m2@g' $src
+    sed -i 's@\bcurand4\b@hiprand4@g' $src
     # hipify uses the old one
     sed -i 's@\bhip_bfloat16\b@__hip_bfloat16@g' $src
     sed -i 's@\b__trap();@abort();@' $src

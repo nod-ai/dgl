@@ -6,11 +6,11 @@
 #ifndef DGL_ARRAY_ITERATOR_H_
 #define DGL_ARRAY_ITERATOR_H_
 
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIPCC__)
 #define CUB_INLINE __host__ __device__ __forceinline__
 #else
 #define CUB_INLINE inline
-#endif  // __CUDA_ARCH__
+#endif  // __CUDA_ARCH__ || __HIPCC__
 
 #include <algorithm>
 #include <iterator>
