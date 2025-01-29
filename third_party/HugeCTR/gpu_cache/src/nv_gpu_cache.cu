@@ -1256,9 +1256,9 @@ gpu_cache<key_type, ref_counter_type, empty_key, set_associativity, warp_size, s
     printf("Error: Invalid value for set_associativity.\n");
     return;
   }
-  if (warp_size != 1 && warp_size != 2 && warp_size != 4 && warp_size != 8 && warp_size != 16 &&
-      warp_size != 32) {
-    printf("Error: Invalid value for warp_size.\n");
+  // Power of 2 between 1 and SLAB_SIZE
+  if ((warp_size & (warp_size-1)) != 0 || warp_size < 1 || warp_size > SLAB_SIZE) {
+    printf("Error: Invalid value for warp_size %d.\n", warp_size);
     return;
   }
 
@@ -1304,9 +1304,9 @@ gpu_cache<key_type, ref_counter_type, empty_key, set_associativity, warp_size, s
     printf("Error: Invalid value for set_associativity.\n");
     return;
   }
-  if (warp_size != 1 && warp_size != 2 && warp_size != 4 && warp_size != 8 && warp_size != 16 &&
-      warp_size != 32) {
-    printf("Error: Invalid value for warp_size.\n");
+  // Power of 2 between 1 and SLAB_SIZE
+  if ((warp_size & (warp_size-1)) != 0 || warp_size < 1 || warp_size > SLAB_SIZE) {
+    printf("Error: Invalid value for warp_size %d.\n", warp_size);
     return;
   }
 

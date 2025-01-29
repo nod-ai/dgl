@@ -610,16 +610,15 @@ CSRMatrix CSRSliceMatrix(
 
   // Execute SegmentMaskColKernel
   const int64_t num_rows = csr.num_rows;
-  constexpr int WARP_SIZE = 32;
   // With a simple fine-tuning, TILE_SIZE=16 gives a good performance.
   constexpr int TILE_SIZE = 16;
-  constexpr int BLOCK_WARPS = CUDA_MAX_NUM_THREADS / WARP_SIZE;
+  constexpr int BLOCK_WARPS = CUDA_MAX_NUM_THREADS / DGL_WARP_SIZE;
   IdType nb =
       dgl::cuda::FindNumBlocks<'x'>((num_rows + TILE_SIZE - 1) / TILE_SIZE);
-  const dim3 nthrs(WARP_SIZE, BLOCK_WARPS);
+  const dim3 nthrs(DGL_WARP_SIZE, BLOCK_WARPS);
   const dim3 nblks(nb);
   CUDA_KERNEL_CALL(
-      (_SegmentMaskColKernel<IdType, WARP_SIZE, BLOCK_WARPS, TILE_SIZE>), nblks,
+      (_SegmentMaskColKernel<IdType, DGL_WARP_SIZE, BLOCK_WARPS, TILE_SIZE>), nblks,
       nthrs, 0, stream, indptr_data, indices_data, num_rows,
       hashmap_buffer.Ptr<IdType>(), buffer_size, mask.Ptr<IdType>(),
       count.Ptr<IdType>());
