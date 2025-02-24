@@ -22,6 +22,9 @@
 #include <thrust/transform.h>
 
 #include <cstddef>
+#ifdef GRAPHBOLT_USE_ROCM
+#include <cuco/cuda_stream_ref.hpp>
+#endif
 #include <cub/cub.cuh>
 #include <cuco/static_map.cuh>
 #include <cuda/std/atomic>
@@ -234,9 +237,18 @@ std::tuple<torch::Tensor, torch::Tensor, int64_t, int64_t> GpuGraphCache::Query(
             [] __device__(thrust::tuple<index_t, index_t> & x) {
               return thrust::get<0>(x) >= 0;
             });
+#ifdef GRAPHBOLT_USE_ROCM
+        // TODO: file issue for rocthrust not supporting tuple structured
+        // binding.
+        const auto tup = static_cast<thrust::tuple<int64_t, int64_t, int64_t>>(
+            num_threshold_new_hit_cpu);
+        const auto [num_threshold, num_new, num_hit] = std::tie(
+            thrust::get<0>(tup), thrust::get<1>(tup), thrust::get<2>(tup));
+#else
         const auto [num_threshold, num_new, num_hit] =
             static_cast<thrust::tuple<int64_t, int64_t, int64_t>>(
                 num_threshold_new_hit_cpu);
+#endif
         map_size_ += num_new;
 
         return std::make_tuple(

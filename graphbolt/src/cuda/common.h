@@ -20,6 +20,12 @@
 #ifndef GRAPHBOLT_CUDA_COMMON_H_
 #define GRAPHBOLT_CUDA_COMMON_H_
 
+#ifdef GRAPHBOLT_USE_ROCM
+// hipCollections defines this with 0, but Torch sometimes
+// checks if this is defined rather than checking the value.
+#undef CUDART_VERSION
+#endif
+
 #include <ATen/cuda/CUDAEvent.h>
 #include <c10/cuda/CUDACachingAllocator.h>
 #include <c10/cuda/CUDAException.h>
