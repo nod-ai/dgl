@@ -7,16 +7,12 @@
 
 
 bash ./script/run_pytest.sh -g \
-    tests/python/pytorch/ \
-    --ignore=tests/python/pytorch/graphbolt \
-    --ignore=tests/python/pytorch/distributed \
-    --deselect=tests/python/pytorch/dataloading/test_dataloader.py::test_distributed_dataloaders
+    tests/python/pytorch
 
 final_ret=$?
 
 bash ./script/run_pytest.sh -g \
-    tests/python/common/ \
-    --ignore=tests/python/common/test_partition.py
+    tests/python/common/
 
 ret=$?
 if (( ret != 0 && ret > final_ret )); then
@@ -25,10 +21,7 @@ fi
 
 # Python CPU tests
 bash ./script/run_pytest.sh -c \
-    tests/python/pytorch/ \
-    --ignore=tests/python/pytorch/graphbolt \
-    --ignore=tests/python/pytorch/distributed \
-    --deselect=tests/python/pytorch/dataloading/test_dataloader.py::test_distributed_dataloaders
+    tests/python/pytorch/
 
 ret=$?
 if (( ret != 0 && ret > final_ret )); then
@@ -36,8 +29,7 @@ if (( ret != 0 && ret > final_ret )); then
 fi
 
 bash ./script/run_pytest.sh -c \
-    tests/python/common/ \
-    --ignore=tests/python/common/test_partition.py
+    tests/python/common/
 
 ret=$?
 if (( ret != 0 && ret > final_ret )); then
