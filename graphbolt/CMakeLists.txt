@@ -7,6 +7,70 @@ if(USE_CUDA)
   message(STATUS "Build graphbolt with CUDA support")
   enable_language(CUDA)
   add_definitions(-DGRAPHBOLT_USE_CUDA)
+elseif(USE_ROCM)
+  # TODO(tpopp): have correct ROCM_DIR
+  include(cmake/util/FindROCm.cmake)
+  include(cmake/modules/ROCm.cmake)
+  add_definitions(-DGRAPHBOLT_USE_ROCM)
+  add_definitions(-DDGL_USE_ROCM)
+  add_definitions(-DHIP_ENABLE_WARP_SYNC_BUILTINS)
+  set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -Wno-instantiation-after-specialization")
+  enable_language(HIP)
+
+  include(FetchContent)
+
+  FetchContent_Declare(
+    prim
+    OVERRIDE_FIND_PACKAGE
+    GIT_REPOSITORY https://github.com/ROCm/rocPRIM.git
+    # This is the first working version that provides everything graphbolt relies on.
+    GIT_TAG        f1d714d1d91ec034e1cc37fae6f3afe7afabb29e
+  )
+  FetchContent_MakeAvailable(prim)
+
+  # Manually add aliases that rocm libraries implement to prevent conflicts
+  add_library(roc::rocprim ALIAS rocprim)
+  add_library(roc::rocprim_hip ALIAS rocprim_hip)
+
+  # -------------------------
+  # Fetch and add hipCUB
+  # -------------------------
+  FetchContent_Declare(
+    hipcub
+    OVERRIDE_FIND_PACKAGE
+    GIT_REPOSITORY https://github.com/tpopp/hipCUB.git
+    # TODO(tpopp): Use a patched hipCUB that exposes Bulk from device_for.hpp
+    GIT_TAG        f342111197dd020f1c4210b16aa550b08992e97b
+  )
+  FetchContent_MakeAvailable(hipcub)
+
+  # -------------------------
+  # Fetch and add libhipcxx
+  # -------------------------
+  # We need libhipcxx which isn't part of /opt/rocm by default. v2.2.0 is the most recent version.
+  FetchContent_Declare(
+    libhipcxx
+    OVERRIDE_FIND_PACKAGE
+    GIT_REPOSITORY https://github.com/ROCm/libhipcxx.git
+    GIT_TAG        v2.2.0
+  )
+  FetchContent_MakeAvailable(libhipcxx)
+
+  # -------------------------
+  # Fetch and add hipCollections
+  # -------------------------
+  # Use a patched hipCollections that is compatible with libhipcxx
+  FetchContent_Declare(
+    cuco
+    OVERRIDE_FIND_PACKAGE
+    GIT_REPOSITORY https://github.com/tpopp/hipCollections.git
+    GIT_TAG        6e31da8fd309f229d28adde8583a30bb4efaf1b7
+  )
+  FetchContent_MakeAvailable(cuco)
+
+  # Include rocthrust after other fetches to prevent using unpatched dependencies
+  find_package(rocthrust REQUIRED)
+  set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -I${HIP_INCLUDE_DIRS}")
 endif()
 
 # For windows, define NOMINMAX to avoid conflict with std::min/max
@@ -40,6 +104,7 @@ set(Torch_DIR "${TORCH_PREFIX}/Torch")
 message(STATUS "Setting directory to ${Torch_DIR}")
 
 find_package(Torch REQUIRED)
+# TODO(tpopp): Changed here
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${TORCH_C_FLAGS}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -g3 -ggdb")
@@ -73,15 +138,32 @@ if(USE_CUDA)
   set(LIB_GRAPHBOLT_CUDA_NAME "${LIB_GRAPHBOLT_NAME}_cuda")
 endif()
 
+if(USE_ROCM)
+  file(GLOB BOLT_HIP_SRC
+    ${BOLT_DIR}/cuda/*.cu
+    ${BOLT_DIR}/cuda/*.cc
+  )
+  list(APPEND BOLT_SRC ${BOLT_HIP_SRC})
+  set_source_files_properties(${BOLT_SRC} PROPERTIES LANGUAGE HIP)
+  set(LIB_GRAPHBOLT_ROCM_NAME "${LIB_GRAPHBOLT_NAME}_rocm")
+endif()
+
+
 add_library(${LIB_GRAPHBOLT_NAME} SHARED ${BOLT_SRC} ${BOLT_HEADERS})
 include_directories(BEFORE ${BOLT_DIR}
                            ${BOLT_HEADERS}
-                           # For CXX20 features:
-                           # `std::atomic_ref`, `std::counting_semaphore`
-                           "../third_party/cccl/libcudacxx/include"
                            "../third_party/pcg/include"
                            "../third_party/tsl_robin_map/include")
+if(NOT USE_ROCM)
+  # This is cuda specific, while ROCM fetches the libhipcxx repository.
+  include_directories(BEFORE # For CXX20 features:
+    # `std::atomic_ref`, `std::counting_semaphore`
+    "../third_party/cccl/libcudacxx/include"
+  )
+endif()
+
 target_link_libraries(${LIB_GRAPHBOLT_NAME} "${TORCH_LIBRARIES}")
+
 if(BUILD_WITH_TASKFLOW)
   target_include_directories(${LIB_GRAPHBOLT_NAME} PRIVATE "../third_party/taskflow")
   target_compile_definitions(${LIB_GRAPHBOLT_NAME} PRIVATE BUILD_WITH_TASKFLOW=1)
@@ -156,6 +238,49 @@ if(USE_CUDA)
 
   target_link_libraries(${LIB_GRAPHBOLT_NAME} ${LIB_GRAPHBOLT_CUDA_NAME})
 endif()
+
+if(USE_ROCM)
+  file(GLOB graphbolt_gpu_cache_src
+    ../third_party/HugeCTR/gpu_cache/src/nv_gpu_cache.cu
+    )
+  set_source_files_properties(${graphbolt_gpu_cache_src} PROPERTIES LANGUAGE HIP)
+  add_library(graphbolt_gpu_cache STATIC ${graphbolt_gpu_cache_src})
+  target_include_directories(graphbolt_gpu_cache PRIVATE "../third_party/HugeCTR/gpu_cache/include")
+  target_compile_options(graphbolt_gpu_cache PRIVATE "-Wno-implicit-exception-spec-mismatch")
+
+
+
+  file(GLOB BOLT_CUDA_EXTENSION_SRC
+    ${BOLT_DIR}/cuda/extension/*.cu
+    ${BOLT_DIR}/cuda/extension/*.cc
+    ../third_party/HugeCTR/gpu_cache/src/nv_gpu_cache.cu
+    )
+  set_source_files_properties(${BOLT_CUDA_EXTENSION_SRC} PROPERTIES LANGUAGE HIP)
+  add_library(${LIB_GRAPHBOLT_ROCM_NAME} STATIC ${BOLT_CUDA_EXTENSION_SRC} ${BOLT_HEADERS})
+  target_link_libraries(${LIB_GRAPHBOLT_ROCM_NAME} PUBLIC "${TORCH_LIBRARIES}")
+  target_link_libraries(${LIB_GRAPHBOLT_ROCM_NAME} PUBLIC graphbolt_gpu_cache)
+
+  # TODO(tpopp): Enable for perf. Was producing failing code
+  # target_compile_definitions(${LIB_GRAPHBOLT_ROCM_NAME} PRIVATE LIBCUDACXX_VERSION)
+  set_target_properties(${LIB_GRAPHBOLT_ROCM_NAME} PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
+
+  include_directories(AFTER "../third_party/HugeCTR/gpu_cache/include")
+  include_directories(
+    $<TARGET_PROPERTY:cuco,INTERFACE_INCLUDE_DIRECTORIES>
+    $<TARGET_PROPERTY:hipcub,INTERFACE_INCLUDE_DIRECTORIES>
+    )
+  target_link_libraries(${LIB_GRAPHBOLT_ROCM_NAME}  PRIVATE
+    cuco
+    hip::device
+    hip::host
+    hipcub
+    roc::rocprim_hip
+    roc::rocthrust
+  )
+
+  target_link_libraries(${LIB_GRAPHBOLT_NAME} ${LIB_GRAPHBOLT_ROCM_NAME} graphbolt_gpu_cache)
+endif()
+
 
 # The Torch CMake configuration only sets up the path for the MKL library when
 # using the conda distribution. The following is a workaround to address this
