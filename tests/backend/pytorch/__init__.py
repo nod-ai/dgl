@@ -4,7 +4,8 @@ import torch as th
 
 
 def cuda():
-    return th.device("cuda:0")
+    # TODO(tpopp): It's unclear to me how one could ever test distributed work while forcing a specific gpu...
+    return th.device(th.cuda.current_device())
 
 
 def is_cuda_available():
