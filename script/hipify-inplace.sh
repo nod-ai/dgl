@@ -62,35 +62,37 @@ echo "Logs written to ${HIPIFY_LOG}"
 # Additional fixes for project-specific things and things hipify misses or gets
 # wrong.
 for src in ${all_srcs[@]}; do
-    sed -i -e 's@#include <hipblas.h>@#include <hipblas/hipblas.h>@' \
-        -e 's@#include <hipsparse.h>@#include <hipsparse/hipsparse.h>@' \
-        -e 's@#include <cuda_fp8.h>@#include <hip/hip_fp8.h>@' \
-        -e 's@#include <cuda_bf16.h>@#include <hip/hip_bf16.h>@' \
-        -e 's@#include <cub/cub.cuh>@#include <hipcub/hipcub.hpp>@' \
-        -e 's@#include "hip/extension/@#include "./cuda/extension/@' \
-        -e 's@#include "hip/cooperative_minibatching_utils.h"@#include "./cuda/cooperative_minibatching_utils.h"@' \
-        -e 's@#include "hip/max_uva_threads.h"@#include "./cuda/max_uva_threads.h"@' \
-        -e 's@\.\./hip/@@' \
-        -e 's@\bDeviceFor::Bulk\b@Bulk@g' \
-        -e 's@\bcub::@hipcub::@g' \
-        -e 's@\bcuda::stream_ref@cuco::cuda_stream_ref@' \
-        -e 's@\bcuda::::min@min@' \
-        -e 's@\bcuda::proclaim_return_type@proclaim_return_type@' \
-        -e 's@\bDGL_USE_CUDA\b@DGL_USE_ROCM@g' \
-        -e 's@\b__CUDA_ARCH__\b@__HIP_DEVICE_COMPILE__@g' \
-        -e 's@\bGRAPHBOLT_USE_CUDA\b@GRAPHBOLT_USE_ROCM@g' \
-        -e 's@\bCUB_VERSION\b@HIPCUB_VERSION@g' \
-        -e 's@\bCUDART_ZERO_BF16\b@HIPRT_ZERO_BF16@g' \
-        -e 's@\bCUDART_INF_BF16\b@HIPRT_INF_BF16@g' \
-        -e 's@\bthrust::cuda::par@thrust::hip::par@g' \
-        -e 's@\b__nv_fp8_e4m3\b@__hip_fp8_e4m3@g' \
-        -e 's@\b__nv_fp8_e5m2\b@__hip_fp8_e5m2@g' \
-        -e 's@\bCUBLAS_GEMM_DEFAULT_TENSOR_OP\b@HIPBLAS_GEMM_DEFAULT@g' \
-        -e 's@\bcurand4\b@hiprand4@g' \
-        -e 's@\bhip_bfloat16\b@__hip_bfloat16@g' `# hipify uses the old one` \
-        -e 's@\bnv_bfloat16\b@hip_bfloat16@g' `# For some reason, some graphbolt dependencies need the old version. ` \
-        -e 's@\b__trap();@abort();@' \
-        -e 's@_hip.h@.h@' $src # Not sure why hipify is changing the import name, though the file name is the original.
+    sed -i -f - $src <<-EOF
+        s@#include <hipblas.h>@#include <hipblas/hipblas.h>@
+        s@#include <hipsparse.h>@#include <hipsparse/hipsparse.h>@
+        s@#include <cuda_fp8.h>@#include <hip/hip_fp8.h>@
+        s@#include <cuda_bf16.h>@#include <hip/hip_bf16.h>@
+        s@#include <cub/cub.cuh>@#include <hipcub/hipcub.hpp>@
+        s@#include "hip/extension/@#include "./cuda/extension/@
+        s@#include "hip/cooperative_minibatching_utils.h"@#include "./cuda/cooperative_minibatching_utils.h"@
+        s@#include "hip/max_uva_threads.h"@#include "./cuda/max_uva_threads.h"@
+        s@\.\./hip/@@
+        s@\bDeviceFor::Bulk\b@Bulk@g
+        s@\bcub::@hipcub::@g
+        s@\bcuda::stream_ref@cuco::cuda_stream_ref@
+        s@\bcuda::::min@min@
+        s@\bcuda::proclaim_return_type@proclaim_return_type@
+        s@\bDGL_USE_CUDA\b@DGL_USE_ROCM@g
+        s@\b__CUDA_ARCH__\b@__HIP_DEVICE_COMPILE__@g
+        s@\bGRAPHBOLT_USE_CUDA\b@GRAPHBOLT_USE_ROCM@g
+        s@\bCUB_VERSION\b@HIPCUB_VERSION@g
+        s@\bCUDART_ZERO_BF16\b@HIPRT_ZERO_BF16@g
+        s@\bCUDART_INF_BF16\b@HIPRT_INF_BF16@g
+        s@\bthrust::cuda::par@thrust::hip::par@g
+        s@\b__nv_fp8_e4m3\b@__hip_fp8_e4m3@g
+        s@\b__nv_fp8_e5m2\b@__hip_fp8_e5m2@g
+        s@\bCUBLAS_GEMM_DEFAULT_TENSOR_OP\b@HIPBLAS_GEMM_DEFAULT@g
+        s@\bcurand4\b@hiprand4@g
+        s@\bhip_bfloat16\b@__hip_bfloat16@g `# hipify uses the old one`
+        s@\bnv_bfloat16\b@hip_bfloat16@g `# For some reason, some graphbolt dependencies need the old version. `
+        s@\b__trap();@abort();@
+        s@_hip.h@.h@
+EOF
 
     # If no changes were made, delete the prehip file.
     if cmp -s "${src}" "${src}.prehip"; then
