@@ -37,7 +37,7 @@
     defined(__HIP_ARCH_HAS_GLOBAL_INT64_ATOMICS__) && \
     defined(__HIP_ARCH_HAS_SHARED_INT64_ATOMICS__)
 #define __ATOMICS__ 1
-#elif __CUDA_ARCH__ >= 700
+#elif defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 700
 #define __ATOMICS__ 1
 #else
 #define __ATOMICS__ 0
