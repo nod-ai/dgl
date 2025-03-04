@@ -87,8 +87,8 @@ for src in ${all_srcs[@]}; do
         s@\b__nv_fp8_e5m2\b@__hip_fp8_e5m2@g
         s@\bCUBLAS_GEMM_DEFAULT_TENSOR_OP\b@HIPBLAS_GEMM_DEFAULT@g
         s@\bcurand4\b@hiprand4@g
-        s@\bhip_bfloat16\b@__hip_bfloat16@g `# hipify uses the old one`
-        s@\bnv_bfloat16\b@hip_bfloat16@g `# For some reason, some graphbolt dependencies need the old version. `
+        s@\bhip_bfloat16\b@__hip_bfloat16@g # hipify uses the old one
+        s@\bnv_bfloat16\b@hip_bfloat16@g # For some reason, some graphbolt dependencies need the old version
         s@\b__trap();@abort();@
         s@_hip.h@.h@
 EOF

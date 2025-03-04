@@ -21,6 +21,8 @@ elseif(USE_ROCM)
     OVERRIDE_FIND_PACKAGE
     GIT_REPOSITORY https://github.com/ROCm/rocPRIM.git
     # This is the first working version that provides everything graphbolt relies on.
+    # This involves several rounds of backported fixes, so it is not a specific
+    # feature being added here.
     GIT_TAG        f1d714d1d91ec034e1cc37fae6f3afe7afabb29e
   )
   FetchContent_MakeAvailable(prim)
@@ -36,7 +38,7 @@ elseif(USE_ROCM)
     hipcub
     OVERRIDE_FIND_PACKAGE
     GIT_REPOSITORY https://github.com/tpopp/hipCUB.git
-    # TODO(tpopp): Use a patched hipCUB that exposes Bulk from device_for.hpp
+    # Use a patched hipCUB that exposes Bulk from device_for.hpp
     GIT_TAG        f342111197dd020f1c4210b16aa550b08992e97b
   )
   FetchContent_MakeAvailable(hipcub)
@@ -101,7 +103,6 @@ set(Torch_DIR "${TORCH_PREFIX}/Torch")
 message(STATUS "Setting directory to ${Torch_DIR}")
 
 find_package(Torch REQUIRED)
-# TODO(tpopp): Changed here
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${TORCH_C_FLAGS}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -g3 -ggdb")
@@ -257,7 +258,7 @@ if(USE_ROCM)
   target_link_libraries(${LIB_GRAPHBOLT_ROCM_NAME} PUBLIC "${TORCH_LIBRARIES}")
   target_link_libraries(${LIB_GRAPHBOLT_ROCM_NAME} PUBLIC graphbolt_gpu_cache)
 
-  # TODO(tpopp): Enable for perf. Was producing failing code
+  # TODO(#23): Enable for perf. Was producing failing code
   # target_compile_definitions(${LIB_GRAPHBOLT_ROCM_NAME} PRIVATE LIBCUDACXX_VERSION)
   set_target_properties(${LIB_GRAPHBOLT_ROCM_NAME} PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
 

@@ -238,8 +238,7 @@ std::tuple<torch::Tensor, torch::Tensor, int64_t, int64_t> GpuGraphCache::Query(
               return thrust::get<0>(x) >= 0;
             });
 #ifdef GRAPHBOLT_USE_ROCM
-        // TODO: file issue for rocthrust not supporting tuple structured
-        // binding.
+        // rocThrust doesn't supporting tuple structured bindings.
         const auto tup = static_cast<thrust::tuple<int64_t, int64_t, int64_t>>(
             num_threshold_new_hit_cpu);
         const auto [num_threshold, num_new, num_hit] = std::tie(

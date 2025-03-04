@@ -50,7 +50,7 @@ struct CacheKey {
         position_in_cache_(position) {
     TORCH_CHECK(key == getKey());
 #ifndef GRAPHBOLT_USE_ROCM
-    // TODO(tpopp): Removed assertion. Unknown why the size is important. Should
+    // TODO(#24): Removed assertion. Unknown why the size is important. Should
     // pack bits.
     static_assert(sizeof(CacheKey) == 2 * sizeof(int64_t));
 #endif
@@ -138,7 +138,7 @@ struct CacheKey {
   // Negative values indicate writing while positive values indicate reading.
   // Access only through an std::atomic_ref instance atomically.
 #ifdef GRAPHBOLT_USE_ROCM
-  // TODO(tpopp): rocm requires at least 4bytes for atomic_ref. int8_t doesn't
+  // TODO(#24): rocm requires at least 4bytes for atomic_ref. int8_t doesn't
   // work
   int32_t reference_count_;
 #else
