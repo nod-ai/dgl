@@ -5,7 +5,7 @@
 
 static constexpr DGLContext CTX = DGLContext{kDGLCPU, 0};
 static constexpr DGLContext CPU = DGLContext{kDGLCPU, 0};
-#ifdef DGL_USE_CUDA
+#ifdef DGL_USE_ROCM
 static constexpr DGLContext GPU = DGLContext{kDGLCUDA, 0};
 #endif
 

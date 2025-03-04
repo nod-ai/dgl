@@ -25,7 +25,7 @@
 #include <cmath>
 
 #if defined(__NVCC__) || defined(__HIPCC__)
-#include <curand_kernel.h>
+#include <hiprand/hiprand_kernel.h>
 #else
 #include <random>
 
@@ -61,16 +61,16 @@ class continuous_seed {
 #if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
   __device__ inline float uniform(const uint64_t t) const {
     const uint64_t kCurandSeed = 999961;  // Could be any random number.
-    curandStatePhilox4_32_10_t rng;
-    curand_init(kCurandSeed, s[0], t, &rng);
+    hiprandStatePhilox4_32_10_t rng;
+    hiprand_init(kCurandSeed, s[0], t, &rng);
     float rnd;
     if (s[0] != s[1]) {
-      rnd = c[0] * curand_normal(&rng);
-      curand_init(kCurandSeed, s[1], t, &rng);
-      rnd += c[1] * curand_normal(&rng);
+      rnd = c[0] * hiprand_normal(&rng);
+      hiprand_init(kCurandSeed, s[1], t, &rng);
+      rnd += c[1] * hiprand_normal(&rng);
       rnd = normcdff(rnd);
     } else {
-      rnd = curand_uniform(&rng);
+      rnd = hiprand_uniform(&rng);
     }
     return rnd;
   }

@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 /**
  *  Copyright 2020-2022 Contributors
  *
@@ -22,7 +23,7 @@
 
 #include <dgl/runtime/c_runtime_api.h>
 #include <dgl/base_heterograph.h>
-#include <cuda_runtime.h>
+#include <hip/hip_runtime.h>
 #include <dgl/runtime/c_runtime_api.h>
 
 #include <algorithm>
@@ -113,7 +114,7 @@ class DeviceNodeMap {
 
   DeviceNodeMap(
       const std::vector<int64_t>& num_nodes, const int64_t offset,
-      DGLContext ctx, cudaStream_t stream)
+      DGLContext ctx, hipStream_t stream)
       : num_types_(num_nodes.size()),
         rhs_offset_(offset),
         hash_tables_(),
@@ -185,7 +186,7 @@ inline IdType RoundUp(const IdType num, const size_t unit) {
 template <typename IdType>
 std::tuple<std::vector<IdArray>, std::vector<IdArray>> MapEdges(
     HeteroGraphPtr graph, const std::vector<EdgeArray>& edge_sets,
-    const DeviceNodeMap<IdType>& node_map, cudaStream_t stream) {
+    const DeviceNodeMap<IdType>& node_map, hipStream_t stream) {
   constexpr const int BLOCK_SIZE = 128;
   constexpr const size_t TILE_SIZE = 1024;
 

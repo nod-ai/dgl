@@ -208,29 +208,29 @@ struct Sum<Idx, __half, atomic> : _Sum<Idx, __half, atomic> {
 
 #if BF16_ENABLED
 template <typename Idx, bool atomic>
-struct Sum<Idx, __nv_bfloat16, atomic> : _Sum<Idx, __nv_bfloat16, atomic> {
-  static constexpr __host__ __device__ __forceinline__ __nv_bfloat16 zero() {
-    return CUDART_ZERO_BF16;
+struct Sum<Idx, __hip_bfloat16, atomic> : _Sum<Idx, __hip_bfloat16, atomic> {
+  static constexpr __host__ __device__ __forceinline__ __hip_bfloat16 zero() {
+    return HIPRT_ZERO_BF16;
   }
   static __device__ __forceinline__ void Call(
-      __nv_bfloat16 *out_buf, Idx *arg_u_buf, Idx *arg_e_buf,
-      __nv_bfloat16 val, Idx uid, Idx eid) {
-    _Sum<Idx, __nv_bfloat16, atomic>::Call(
+      __hip_bfloat16 *out_buf, Idx *arg_u_buf, Idx *arg_e_buf,
+      __hip_bfloat16 val, Idx uid, Idx eid) {
+    _Sum<Idx, __hip_bfloat16, atomic>::Call(
         out_buf, arg_u_buf, arg_e_buf, val, uid, eid);
   }
   static __device__ __forceinline__ void Call(
-      __nv_bfloat16 *out_buf, Idx *arg_buf, __nv_bfloat16 val, Idx id) {
-    _Sum<Idx, __nv_bfloat16, atomic>::Call(out_buf, arg_buf, val, id);
+      __hip_bfloat16 *out_buf, Idx *arg_buf, __hip_bfloat16 val, Idx id) {
+    _Sum<Idx, __hip_bfloat16, atomic>::Call(out_buf, arg_buf, val, id);
   }
   // sometimes we have to use float in reduction for better precision
   static __device__ __forceinline__ void Call(
       float *out_buf, Idx *arg_u_buf, Idx *arg_e_buf,
-      __nv_bfloat16 val, Idx uid, Idx eid) {
+      __hip_bfloat16 val, Idx uid, Idx eid) {
     _Sum<Idx, float, atomic>::Call(out_buf, arg_u_buf, arg_e_buf,
         static_cast<float>(val), uid, eid);
   }
   static __device__ __forceinline__ void Call(
-      float *out_buf, Idx *arg_buf, __nv_bfloat16 val, Idx id) {
+      float *out_buf, Idx *arg_buf, __hip_bfloat16 val, Idx id) {
     _Sum<Idx, float, atomic>::Call(out_buf, arg_buf,
         static_cast<float>(val), id);
   }
@@ -313,29 +313,29 @@ struct Max<Idx, __half, atomic> : _Max<Idx, __half, atomic> {
 
 #if BF16_ENABLED
 template <typename Idx, bool atomic>
-struct Max<Idx, __nv_bfloat16, atomic> : _Max<Idx, __nv_bfloat16, atomic> {
-  static constexpr __host__ __device__ __forceinline__ __nv_bfloat16 zero() {
-    return -CUDART_INF_BF16;
+struct Max<Idx, __hip_bfloat16, atomic> : _Max<Idx, __hip_bfloat16, atomic> {
+  static constexpr __host__ __device__ __forceinline__ __hip_bfloat16 zero() {
+    return -HIPRT_INF_BF16;
   }
   static __device__ __forceinline__ void Call(
-      __nv_bfloat16 *out_buf, Idx *arg_u_buf, Idx *arg_e_buf,
-      __nv_bfloat16 val, Idx uid, Idx eid) {
-    _Max<Idx, __nv_bfloat16, atomic>::Call(
+      __hip_bfloat16 *out_buf, Idx *arg_u_buf, Idx *arg_e_buf,
+      __hip_bfloat16 val, Idx uid, Idx eid) {
+    _Max<Idx, __hip_bfloat16, atomic>::Call(
         out_buf, arg_u_buf, arg_e_buf, val, uid, eid);
   }
   static __device__ __forceinline__ void Call(
-      __nv_bfloat16 *out_buf, Idx *arg_buf, __nv_bfloat16 val, Idx id) {
-    _Max<Idx, __nv_bfloat16, atomic>::Call(out_buf, arg_buf, val, id);
+      __hip_bfloat16 *out_buf, Idx *arg_buf, __hip_bfloat16 val, Idx id) {
+    _Max<Idx, __hip_bfloat16, atomic>::Call(out_buf, arg_buf, val, id);
   }
   // sometimes we have to use float in reduction for better precision
   static __device__ __forceinline__ void Call(
       float *out_buf, Idx *arg_u_buf, Idx *arg_e_buf,
-      __nv_bfloat16 val, Idx uid, Idx eid) {
+      __hip_bfloat16 val, Idx uid, Idx eid) {
     _Max<Idx, float, atomic>::Call(out_buf, arg_u_buf, arg_e_buf,
         static_cast<float>(val), uid, eid);
   }
   static __device__ __forceinline__ void Call(
-      float *out_buf, Idx *arg_buf, __nv_bfloat16 val, Idx id) {
+      float *out_buf, Idx *arg_buf, __hip_bfloat16 val, Idx id) {
     _Max<Idx, float, atomic>::Call(out_buf, arg_buf,
         static_cast<float>(val), id);
   }
@@ -418,29 +418,29 @@ struct Min<Idx, __half, atomic> : _Min<Idx, __half, atomic> {
 
 #if BF16_ENABLED
 template <typename Idx, bool atomic>
-struct Min<Idx, __nv_bfloat16, atomic> : _Min<Idx, __nv_bfloat16, atomic> {
-  static constexpr __host__ __device__ __forceinline__ __nv_bfloat16 zero() {
-    return CUDART_INF_BF16;
+struct Min<Idx, __hip_bfloat16, atomic> : _Min<Idx, __hip_bfloat16, atomic> {
+  static constexpr __host__ __device__ __forceinline__ __hip_bfloat16 zero() {
+    return HIPRT_INF_BF16;
   }
   static __device__ __forceinline__ void Call(
-      __nv_bfloat16 *out_buf, Idx *arg_u_buf, Idx *arg_e_buf,
-      __nv_bfloat16 val, Idx uid, Idx eid) {
-    _Min<Idx, __nv_bfloat16, atomic>::Call(
+      __hip_bfloat16 *out_buf, Idx *arg_u_buf, Idx *arg_e_buf,
+      __hip_bfloat16 val, Idx uid, Idx eid) {
+    _Min<Idx, __hip_bfloat16, atomic>::Call(
         out_buf, arg_u_buf, arg_e_buf, val, uid, eid);
   }
   static __device__ __forceinline__ void Call(
-      __nv_bfloat16 *out_buf, Idx *arg_buf, __nv_bfloat16 val, Idx id) {
-    _Min<Idx, __nv_bfloat16, atomic>::Call(out_buf, arg_buf, val, id);
+      __hip_bfloat16 *out_buf, Idx *arg_buf, __hip_bfloat16 val, Idx id) {
+    _Min<Idx, __hip_bfloat16, atomic>::Call(out_buf, arg_buf, val, id);
   }
   // sometimes we have to use float in reduction for better precision
   static __device__ __forceinline__ void Call(
       float *out_buf, Idx *arg_u_buf, Idx *arg_e_buf,
-      __nv_bfloat16 val, Idx uid, Idx eid) {
+      __hip_bfloat16 val, Idx uid, Idx eid) {
     _Min<Idx, float, atomic>::Call(out_buf, arg_u_buf, arg_e_buf,
         static_cast<float>(val), uid, eid);
   }
   static __device__ __forceinline__ void Call(
-      float *out_buf, Idx *arg_buf, __nv_bfloat16 val, Idx id) {
+      float *out_buf, Idx *arg_buf, __hip_bfloat16 val, Idx id) {
     _Min<Idx, float, atomic>::Call(out_buf, arg_buf,
         static_cast<float>(val), id);
   }

@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 /**
  *  Copyright (c) 2020 by Contributors
  * @file array/cuda/coo_sort.cc
@@ -65,7 +66,7 @@ __global__ void _COODecodeEdgesKernel(
 
 template <DGLDeviceType XPU, typename IdType>
 void COOSort_(COOMatrix* coo, bool sort_column) {
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   const int row_bits = cuda::_NumberOfBits(coo->num_rows);
 
   const int64_t nnz = coo->row->shape[0];
@@ -138,7 +139,7 @@ template <DGLDeviceType XPU, typename IdType>
 std::pair<bool, bool> COOIsSorted(COOMatrix coo) {
   const int64_t nnz = coo.row->shape[0];
   const auto& ctx = coo.row->ctx;
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   auto device = runtime::DeviceAPI::Get(ctx);
   // We allocate a workspace of 2*nnz bytes. It wastes a little bit memory but
   // should be fine.

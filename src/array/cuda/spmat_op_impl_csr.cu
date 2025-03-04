@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 /**
  *  Copyright (c) 2020 by Contributors
  * @file array/cuda/spmat_op_impl_csr.cu
@@ -7,7 +8,7 @@
 #include <thrust/execution_policy.h>
 #include <thrust/for_each.h>
 
-#include <cub/cub.cuh>
+#include <hipcub/hipcub.hpp>
 #include <numeric>
 #include <unordered_set>
 #include <vector>
@@ -28,7 +29,7 @@ namespace impl {
 
 template <DGLDeviceType XPU, typename IdType>
 bool CSRIsNonZero(CSRMatrix csr, int64_t row, int64_t col) {
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   const auto& ctx = csr.indptr->ctx;
   IdArray rows = aten::VecToIdArray<int64_t>({row}, sizeof(IdType) * 8, ctx);
   IdArray cols = aten::VecToIdArray<int64_t>({col}, sizeof(IdType) * 8, ctx);
@@ -58,7 +59,7 @@ NDArray CSRIsNonZero(CSRMatrix csr, NDArray row, NDArray col) {
   if (rstlen == 0) return rst;
   const int64_t row_stride = (rowlen == 1 && collen != 1) ? 0 : 1;
   const int64_t col_stride = (collen == 1 && rowlen != 1) ? 0 : 1;
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   const int nt = dgl::cuda::FindNumThreads(rstlen);
   const int nb = (rstlen + nt - 1) / nt;
   const IdType* data = nullptr;
@@ -104,7 +105,7 @@ template <DGLDeviceType XPU, typename IdType>
 bool CSRHasDuplicate(CSRMatrix csr) {
   if (!csr.sorted) csr = CSRSort(csr);
   const auto& ctx = csr.indptr->ctx;
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   auto device = runtime::DeviceAPI::Get(ctx);
   // We allocate a workspace of num_rows bytes. It wastes a little bit memory
   // but should be fine.
@@ -149,7 +150,7 @@ __global__ void _CSRGetRowNNZKernel(
 
 template <DGLDeviceType XPU, typename IdType>
 NDArray CSRGetRowNNZ(CSRMatrix csr, NDArray rows) {
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   const auto len = rows->shape[0];
   const IdType* vid_data = rows.Ptr<IdType>();
   const IdType* indptr_data =
@@ -250,7 +251,7 @@ __global__ void _SegmentCopyKernel(
 
 template <DGLDeviceType XPU, typename IdType>
 CSRMatrix CSRSliceRows(CSRMatrix csr, NDArray rows) {
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   const int64_t len = rows->shape[0];
   IdArray ret_indptr = aten::CumSum(aten::CSRGetRowNNZ(csr, rows), true);
   const int64_t nnz = aten::IndexSelect<IdType>(ret_indptr, len);
@@ -367,7 +368,7 @@ std::vector<NDArray> CSRGetDataAndIndices(
   const int64_t nnz = csr.indices->shape[0];
   const int64_t row_stride = (rowlen == 1 && collen != 1) ? 0 : 1;
   const int64_t col_stride = (collen == 1 && rowlen != 1) ? 0 : 1;
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
 
   const IdType* indptr_data =
       static_cast<IdType*>(GetDevicePointer(csr.indptr));
@@ -532,7 +533,7 @@ __global__ void _SegmentMaskColKernel(
           static_cast<IdType>(num_rows));
 
   NodeQueryHashmap<IdType> hashmap(hashmap_buffer, buffer_size);
-  typedef cub::WarpReduce<IdType> WarpReduce;
+  typedef hipcub::WarpReduce<IdType> WarpReduce;
   __shared__ typename WarpReduce::TempStorage temp_storage[BLOCK_WARPS];
 
   while (out_row < last_row) {
@@ -557,7 +558,7 @@ __global__ void _SegmentMaskColKernel(
 template <DGLDeviceType XPU, typename IdType>
 CSRMatrix CSRSliceMatrix(
     CSRMatrix csr, runtime::NDArray rows, runtime::NDArray cols) {
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   const auto& ctx = rows->ctx;
   const auto& dtype = rows->dtype;
   const auto nbits = dtype.bits;
@@ -582,7 +583,7 @@ CSRMatrix CSRSliceMatrix(
   // A count for how many masked values per row.
   IdArray count = NewIdArray(csr.num_rows, ctx, nbits);
   CUDA_CALL(
-      cudaMemset(count.Ptr<IdType>(), 0, sizeof(IdType) * (csr.num_rows)));
+      hipMemset(count.Ptr<IdType>(), 0, sizeof(IdType) * (csr.num_rows)));
 
   // Generate a NodeQueryHashmap buffer. The key of the hashmap is col.
   // For performance, the load factor of the hashmap is in (0.25, 0.5);
@@ -593,7 +594,7 @@ CSRMatrix CSRSliceMatrix(
 
   using it = thrust::counting_iterator<int64_t>;
   runtime::CUDAWorkspaceAllocator allocator(ctx);
-  const auto exec_policy = thrust::cuda::par_nosync(allocator).on(stream);
+  const auto exec_policy = thrust::hip::par_nosync(allocator).on(stream);
   thrust::for_each(
       exec_policy, it(0), it(new_ncols),
       [key = cols.Ptr<IdType>(), buffer = hashmap_buffer.Ptr<IdType>(),

@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 /*!
  *   Copyright (c) 2022, NVIDIA Corporation
  *   Copyright (c) 2022, GT-TDAlab (Muhammed Fatih Balin & Umit V. Catalyurek)
@@ -35,7 +36,7 @@
 #include <thrust/zip_function.h>
 
 #include <algorithm>
-#include <cub/cub.cuh>  // NOLINT
+#include <hipcub/hipcub.hpp>  // NOLINT
 #include <limits>
 #include <numeric>
 #include <type_traits>
@@ -276,7 +277,7 @@ __global__ void _CSRRowWiseLayerSampleDegreeKernel(
     const FloatType* const ds, const FloatType* const d2s,
     const IdType* const indptr, const FloatType* const probs,
     const FloatType* const A, const IdType* const subindptr) {
-  typedef cub::BlockReduce<FloatType, BLOCK_SIZE> BlockReduce;
+  typedef hipcub::BlockReduce<FloatType, BLOCK_SIZE> BlockReduce;
   __shared__ typename BlockReduce::TempStorage temp_storage;
   __shared__ FloatType var_1_bcast[BLOCK_CTAS];
 
@@ -350,7 +351,7 @@ int log_size(const IdType size) {
 
 template <typename IdType, typename FloatType, typename exec_policy_t>
 void compute_importance_sampling_probabilities(
-    CSRMatrix mat, const IdType hop_size, cudaStream_t stream,
+    CSRMatrix mat, const IdType hop_size, hipStream_t stream,
     const continuous_seed seed, const IdType num_rows, const IdType* indptr,
     const IdType* subindptr, const IdType* indices, IdArray idx_coo_arr,
     const IdType* nids,
@@ -397,17 +398,17 @@ void compute_importance_sampling_probabilities(
         hop_1, 0, hop_2.get(), 0, sizeof(IdType) * hop_size, ctx, ctx,
         mat.indptr->dtype);
 
-    cub::DoubleBuffer<IdType> hop_b(hop_2.get(), hop_3.get());
+    hipcub::DoubleBuffer<IdType> hop_b(hop_2.get(), hop_3.get());
 
     {
       std::size_t temp_storage_bytes = 0;
-      CUDA_CALL(cub::DeviceRadixSort::SortKeys(
+      CUDA_CALL(hipcub::DeviceRadixSort::SortKeys(
           nullptr, temp_storage_bytes, hop_b, hop_size, 0, max_log_num_vertices,
           stream));
 
       auto temp = allocator.alloc_unique<char>(temp_storage_bytes);
 
-      CUDA_CALL(cub::DeviceRadixSort::SortKeys(
+      CUDA_CALL(hipcub::DeviceRadixSort::SortKeys(
           temp.get(), temp_storage_bytes, hop_b, hop_size, 0,
           max_log_num_vertices, stream));
     }
@@ -417,13 +418,13 @@ void compute_importance_sampling_probabilities(
 
     {
       std::size_t temp_storage_bytes = 0;
-      CUDA_CALL(cub::DeviceRunLengthEncode::Encode(
+      CUDA_CALL(hipcub::DeviceRunLengthEncode::Encode(
           nullptr, temp_storage_bytes, hop_b.Current(), hop_unique.get(),
           hop_counts.get(), hop_unique_size.get(), hop_size, stream));
 
       auto temp = allocator.alloc_unique<char>(temp_storage_bytes);
 
-      CUDA_CALL(cub::DeviceRunLengthEncode::Encode(
+      CUDA_CALL(hipcub::DeviceRunLengthEncode::Encode(
           temp.get(), temp_storage_bytes, hop_b.Current(), hop_unique.get(),
           hop_counts.get(), hop_unique_size.get(), hop_size, stream));
 
@@ -521,7 +522,7 @@ std::pair<COOMatrix, FloatArray> CSRLaborSampling(
   runtime::CUDAWorkspaceAllocator allocator(ctx);
 
   const auto stream = runtime::getCurrentCUDAStream();
-  const auto exec_policy = thrust::cuda::par_nosync(allocator).on(stream);
+  const auto exec_policy = thrust::hip::par_nosync(allocator).on(stream);
 
   auto device = runtime::DeviceAPI::Get(ctx);
 
@@ -568,11 +569,11 @@ std::pair<COOMatrix, FloatArray> CSRLaborSampling(
     auto ds_d2s = thrust::make_zip_iterator(ds, d2s);
 
     size_t prefix_temp_size = 0;
-    CUDA_CALL(cub::DeviceSegmentedReduce::Reduce(
+    CUDA_CALL(hipcub::DeviceSegmentedReduce::Reduce(
         nullptr, prefix_temp_size, A_A2, ds_d2s, num_rows, b_offsets, e_offsets,
         TupleSum{}, thrust::make_tuple((FloatType)0, (FloatType)0), stream));
     auto temp = allocator.alloc_unique<char>(prefix_temp_size);
-    CUDA_CALL(cub::DeviceSegmentedReduce::Reduce(
+    CUDA_CALL(hipcub::DeviceSegmentedReduce::Reduce(
         temp.get(), prefix_temp_size, A_A2, ds_d2s, num_rows, b_offsets,
         e_offsets, TupleSum{}, thrust::make_tuple((FloatType)0, (FloatType)0),
         stream));
@@ -585,11 +586,11 @@ std::pair<COOMatrix, FloatArray> CSRLaborSampling(
   IdType hop_size;
   {
     size_t prefix_temp_size = 0;
-    CUDA_CALL(cub::DeviceScan::ExclusiveSum(
+    CUDA_CALL(hipcub::DeviceScan::ExclusiveSum(
         nullptr, prefix_temp_size, in_deg.get(), subindptr, num_rows + 1,
         stream));
     auto temp = allocator.alloc_unique<char>(prefix_temp_size);
-    CUDA_CALL(cub::DeviceScan::ExclusiveSum(
+    CUDA_CALL(hipcub::DeviceScan::ExclusiveSum(
         temp.get(), prefix_temp_size, in_deg.get(), subindptr, num_rows + 1,
         stream));
 
@@ -618,11 +619,11 @@ std::pair<COOMatrix, FloatArray> CSRLaborSampling(
       auto modified_in_deg = thrust::make_transform_iterator(
           iota, AlignmentFunc<IdType>{in_deg.get(), perm, num_rows});
       size_t prefix_temp_size = 0;
-      CUDA_CALL(cub::DeviceScan::ExclusiveSum(
+      CUDA_CALL(hipcub::DeviceScan::ExclusiveSum(
           nullptr, prefix_temp_size, modified_in_deg, subindptr_aligned.get(),
           num_rows + 1, stream));
       auto temp = allocator.alloc_unique<char>(prefix_temp_size);
-      CUDA_CALL(cub::DeviceScan::ExclusiveSum(
+      CUDA_CALL(hipcub::DeviceScan::ExclusiveSum(
           temp.get(), prefix_temp_size, modified_in_deg,
           subindptr_aligned.get(), num_rows + 1, stream));
 

@@ -17,7 +17,7 @@ namespace impl {
 
 template <typename DType, typename IdType>
 NDArray IndexSelectCPUFromGPU(NDArray array, IdArray index) {
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   const int64_t arr_len = array->shape[0];
   const int64_t len = index->shape[0];
   int64_t num_feat = 1;
@@ -78,7 +78,7 @@ template NDArray IndexSelectCPUFromGPU<int64_t, int64_t>(NDArray, IdArray);
 
 template <typename DType, typename IdType>
 void IndexScatterGPUToCPU(NDArray dest, IdArray index, NDArray source) {
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   const DType* source_data = static_cast<DType*>(source->data);
   const IdType* idx_data = static_cast<IdType*>(index->data);
   const int64_t arr_len = dest->shape[0];

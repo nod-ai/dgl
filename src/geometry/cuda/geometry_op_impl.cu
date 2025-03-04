@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 /**
  *  Copyright (c) 2019 by Contributors
  * @file geometry/cuda/geometry_op_impl.cc
@@ -95,7 +96,7 @@ template <DGLDeviceType XPU, typename FloatType, typename IdType>
 void FarthestPointSampler(
     NDArray array, int64_t batch_size, int64_t sample_points, NDArray dist,
     IdArray start_idx, IdArray result) {
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
 
   const FloatType* array_data = static_cast<FloatType*>(array->data);
 
@@ -110,7 +111,7 @@ void FarthestPointSampler(
 
   // sample for each cloud in the batch
   IdType* start_idx_data = static_cast<IdType*>(start_idx->data);
-  CUDA_CALL(cudaSetDevice(array->ctx.device_id));
+  CUDA_CALL(hipSetDevice(array->ctx.device_id));
 
   CUDA_KERNEL_CALL(
       fps_kernel, batch_size, THREADS, 0, stream, array_data, batch_size,

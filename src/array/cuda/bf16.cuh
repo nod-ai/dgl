@@ -20,129 +20,129 @@
 #define DGL_ARRAY_CUDA_BF16_CUH_
 
 #if BF16_ENABLED
-#include <cuda_bf16.h>
+#include <hip/hip_bf16.h>
 
 #include <algorithm>
 
-static __device__ __forceinline__ __nv_bfloat16
-max(__nv_bfloat16 a, __nv_bfloat16 b) {
+static __device__ __forceinline__ __hip_bfloat16
+max(__hip_bfloat16 a, __hip_bfloat16 b) {
 #if __CUDA_ARCH__ >= 800 || defined(__HIP_DEVICE_COMPILE__)
   return __hmax(a, b);
 #else
-  return __nv_bfloat16(max(float(a), float(b)));  // NOLINT
+  return __hip_bfloat16(max(float(a), float(b)));  // NOLINT
 #endif
 }
 
-static __device__ __forceinline__ __nv_bfloat16
-min(__nv_bfloat16 a, __nv_bfloat16 b) {
+static __device__ __forceinline__ __hip_bfloat16
+min(__hip_bfloat16 a, __hip_bfloat16 b) {
 #if __CUDA_ARCH__ >= 800 || defined(__HIP_DEVICE_COMPILE__)
   return __hmin(a, b);
 #else
-  return __nv_bfloat16(min(float(a), float(b)));  // NOLINT
+  return __hip_bfloat16(min(float(a), float(b)));  // NOLINT
 #endif
 }
 
-#ifdef __CUDACC__
+#ifdef __HIPCC__
 // Arithmetic BF16 operations for architecture >= 8.0 are already defined in
 // cuda_bf16.h
 #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 800)
 // CUDA 12.2 adds "emulated" support for older architectures.
 #if defined(CUDART_VERSION) && (CUDART_VERSION < 12020)
-__device__ __forceinline__ __nv_bfloat16
-operator+(const __nv_bfloat16& lh, const __nv_bfloat16& rh) {
-  return __nv_bfloat16(float(lh) + float(rh));  // NOLINT
+__device__ __forceinline__ __hip_bfloat16
+operator+(const __hip_bfloat16& lh, const __hip_bfloat16& rh) {
+  return __hip_bfloat16(float(lh) + float(rh));  // NOLINT
 }
-__device__ __forceinline__ __nv_bfloat16
-operator-(const __nv_bfloat16& lh, const __nv_bfloat16& rh) {
-  return __nv_bfloat16(float(lh) - float(rh));  // NOLINT
+__device__ __forceinline__ __hip_bfloat16
+operator-(const __hip_bfloat16& lh, const __hip_bfloat16& rh) {
+  return __hip_bfloat16(float(lh) - float(rh));  // NOLINT
 }
-__device__ __forceinline__ __nv_bfloat16
-operator*(const __nv_bfloat16& lh, const __nv_bfloat16& rh) {
-  return __nv_bfloat16(float(lh) * float(rh));  // NOLINT
+__device__ __forceinline__ __hip_bfloat16
+operator*(const __hip_bfloat16& lh, const __hip_bfloat16& rh) {
+  return __hip_bfloat16(float(lh) * float(rh));  // NOLINT
 }
-__device__ __forceinline__ __nv_bfloat16
-operator/(const __nv_bfloat16& lh, const __nv_bfloat16& rh) {
-  return __nv_bfloat16(float(lh) / float(rh));  // NOLINT
-}
-
-__device__ __forceinline__ __nv_bfloat16& operator+=(
-    __nv_bfloat16& lh, const __nv_bfloat16& rh) {  // NOLINT
-  lh = __nv_bfloat16(float(lh) + float(rh));       // NOLINT
-  return lh;
-}
-__device__ __forceinline__ __nv_bfloat16& operator-=(
-    __nv_bfloat16& lh, const __nv_bfloat16& rh) {  // NOLINT
-  lh = __nv_bfloat16(float(lh) - float(rh));       // NOLINT
-  return lh;
-}
-__device__ __forceinline__ __nv_bfloat16& operator*=(
-    __nv_bfloat16& lh, const __nv_bfloat16& rh) {  // NOLINT
-  lh = __nv_bfloat16(float(lh) * float(rh));       // NOLINT
-  return lh;
-}
-__device__ __forceinline__ __nv_bfloat16& operator/=(
-    __nv_bfloat16& lh, const __nv_bfloat16& rh) {  // NOLINT
-  lh = __nv_bfloat16(float(lh) / float(rh));       // NOLINT
-  return lh;
+__device__ __forceinline__ __hip_bfloat16
+operator/(const __hip_bfloat16& lh, const __hip_bfloat16& rh) {
+  return __hip_bfloat16(float(lh) / float(rh));  // NOLINT
 }
 
-__device__ __forceinline__ __nv_bfloat16& operator++(
-    __nv_bfloat16& h) {                // NOLINT
-  h = __nv_bfloat16(float(h) + 1.0f);  // NOLINT
+__device__ __forceinline__ __hip_bfloat16& operator+=(
+    __hip_bfloat16& lh, const __hip_bfloat16& rh) {  // NOLINT
+  lh = __hip_bfloat16(float(lh) + float(rh));       // NOLINT
+  return lh;
+}
+__device__ __forceinline__ __hip_bfloat16& operator-=(
+    __hip_bfloat16& lh, const __hip_bfloat16& rh) {  // NOLINT
+  lh = __hip_bfloat16(float(lh) - float(rh));       // NOLINT
+  return lh;
+}
+__device__ __forceinline__ __hip_bfloat16& operator*=(
+    __hip_bfloat16& lh, const __hip_bfloat16& rh) {  // NOLINT
+  lh = __hip_bfloat16(float(lh) * float(rh));       // NOLINT
+  return lh;
+}
+__device__ __forceinline__ __hip_bfloat16& operator/=(
+    __hip_bfloat16& lh, const __hip_bfloat16& rh) {  // NOLINT
+  lh = __hip_bfloat16(float(lh) / float(rh));       // NOLINT
+  return lh;
+}
+
+__device__ __forceinline__ __hip_bfloat16& operator++(
+    __hip_bfloat16& h) {                // NOLINT
+  h = __hip_bfloat16(float(h) + 1.0f);  // NOLINT
   return h;
 }
-__device__ __forceinline__ __nv_bfloat16& operator--(
-    __nv_bfloat16& h) {                // NOLINT
-  h = __nv_bfloat16(float(h) - 1.0f);  // NOLINT
+__device__ __forceinline__ __hip_bfloat16& operator--(
+    __hip_bfloat16& h) {                // NOLINT
+  h = __hip_bfloat16(float(h) - 1.0f);  // NOLINT
   return h;
 }
-__device__ __forceinline__ __nv_bfloat16
-operator++(__nv_bfloat16& h, int) {  // NOLINT
-  __nv_bfloat16 ret = h;
-  h = __nv_bfloat16(float(h) + 1.0f);  // NOLINT
+__device__ __forceinline__ __hip_bfloat16
+operator++(__hip_bfloat16& h, int) {  // NOLINT
+  __hip_bfloat16 ret = h;
+  h = __hip_bfloat16(float(h) + 1.0f);  // NOLINT
   return ret;
 }
-__device__ __forceinline__ __nv_bfloat16
-operator--(__nv_bfloat16& h, int) {  // NOLINT
-  __nv_bfloat16 ret = h;
-  h = __nv_bfloat16(float(h) - 1.0f);  // NOLINT
+__device__ __forceinline__ __hip_bfloat16
+operator--(__hip_bfloat16& h, int) {  // NOLINT
+  __hip_bfloat16 ret = h;
+  h = __hip_bfloat16(float(h) - 1.0f);  // NOLINT
   return ret;
 }
 
-__device__ __forceinline__ __nv_bfloat16 operator+(const __nv_bfloat16& h) {
+__device__ __forceinline__ __hip_bfloat16 operator+(const __hip_bfloat16& h) {
   return h;
 }
-__device__ __forceinline__ __nv_bfloat16 operator-(const __nv_bfloat16& h) {
-  return __nv_bfloat16(-float(h));  // NOLINT
+__device__ __forceinline__ __hip_bfloat16 operator-(const __hip_bfloat16& h) {
+  return __hip_bfloat16(-float(h));  // NOLINT
 }
 
 __device__ __forceinline__ bool operator==(
-    const __nv_bfloat16& lh, const __nv_bfloat16& rh) {
+    const __hip_bfloat16& lh, const __hip_bfloat16& rh) {
   return float(lh) == float(rh);  // NOLINT
 }
 __device__ __forceinline__ bool operator!=(
-    const __nv_bfloat16& lh, const __nv_bfloat16& rh) {
+    const __hip_bfloat16& lh, const __hip_bfloat16& rh) {
   return float(lh) != float(rh);  // NOLINT
 }
 __device__ __forceinline__ bool operator>(
-    const __nv_bfloat16& lh, const __nv_bfloat16& rh) {
+    const __hip_bfloat16& lh, const __hip_bfloat16& rh) {
   return float(lh) > float(rh);  // NOLINT
 }
 __device__ __forceinline__ bool operator<(
-    const __nv_bfloat16& lh, const __nv_bfloat16& rh) {
+    const __hip_bfloat16& lh, const __hip_bfloat16& rh) {
   return float(lh) < float(rh);  // NOLINT
 }
 __device__ __forceinline__ bool operator>=(
-    const __nv_bfloat16& lh, const __nv_bfloat16& rh) {
+    const __hip_bfloat16& lh, const __hip_bfloat16& rh) {
   return float(lh) >= float(rh);  // NOLINT
 }
 __device__ __forceinline__ bool operator<=(
-    const __nv_bfloat16& lh, const __nv_bfloat16& rh) {
+    const __hip_bfloat16& lh, const __hip_bfloat16& rh) {
   return float(lh) <= float(rh);  // NOLINT
 }
 #endif  // defined(CUDART_VERSION) && (CUDART_VERSION < 12020)
 #endif  // defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 800)
-#endif  // __CUDACC__
+#endif  // __HIPCC__
 
 #endif  // BF16_ENABLED
 

@@ -20,7 +20,7 @@
 #ifndef DGL_RUNTIME_CUDA_GPU_CACHE_H_
 #define DGL_RUNTIME_CUDA_GPU_CACHE_H_
 
-#include <cuda_runtime.h>
+#include <hip/hip_runtime.h>
 #include <dgl/array.h>
 #include <dgl/aten/array_ops.h>
 #include <dgl/packed_func_ext.h>
@@ -54,12 +54,12 @@ class GpuCache : public runtime::Object {
       : num_feats(num_feats),
         cache(std::make_unique<gpu_cache_t>(
             (num_items + bucket_size - 1) / bucket_size, num_feats)) {
-    CUDA_CALL(cudaGetDevice(&cuda_device));
+    CUDA_CALL(hipGetDevice(&cuda_device));
   }
 
   std::tuple<NDArray, IdArray, IdArray> Query(IdArray keys) {
     const auto &ctx = keys->ctx;
-    cudaStream_t stream = dgl::runtime::getCurrentCUDAStream();
+    hipStream_t stream = dgl::runtime::getCurrentCUDAStream();
     auto device = dgl::runtime::DeviceAPI::Get(ctx);
     CHECK_EQ(ctx.device_type, kDGLCUDA)
         << "The keys should be on a CUDA device";
@@ -93,7 +93,7 @@ class GpuCache : public runtime::Object {
   }
 
   void Replace(IdArray keys, NDArray values) {
-    cudaStream_t stream = dgl::runtime::getCurrentCUDAStream();
+    hipStream_t stream = dgl::runtime::getCurrentCUDAStream();
     CHECK_EQ(keys->ctx.device_type, kDGLCUDA)
         << "The keys should be on a CUDA device";
     CHECK_EQ(keys->ctx.device_id, cuda_device)

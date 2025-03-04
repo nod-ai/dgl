@@ -41,7 +41,7 @@
  * We treat pinned memory as normal host memory if we don't want
  * to enable CUDA UVA access for this operator
  */
-#ifdef DGL_USE_CUDA
+#ifdef DGL_USE_ROCM
 #define ATEN_XPU_SWITCH_CUDA(val, XPU, op, ...)                          \
   do {                                                                   \
     if ((val) == kDGLCPU) {                                              \
@@ -55,9 +55,9 @@
                  << dgl::runtime::DeviceTypeCode2Str(val) << " device."; \
     }                                                                    \
   } while (0)
-#else  // DGL_USE_CUDA
+#else  // DGL_USE_ROCM
 #define ATEN_XPU_SWITCH_CUDA ATEN_XPU_SWITCH
-#endif  // DGL_USE_CUDA
+#endif  // DGL_USE_ROCM
 
 /**
  * Dispatch according to integral type (either int32 or int64):
@@ -132,7 +132,7 @@
  * Dispatch according to float type, including 16bits
  * (float16/bfloat16/float32/float64).
  */
-#ifdef DGL_USE_CUDA
+#ifdef DGL_USE_ROCM
 #if BF16_ENABLED
 #define ATEN_FLOAT_TYPE_SWITCH_16BITS(val, FloatType, XPU, val_name, ...)   \
   do {                                                                      \
@@ -150,7 +150,7 @@
       { __VA_ARGS__ }                                                       \
     } else if (                                                             \
         XPU == kDGLCUDA && (val).bits == 16 && (val).code == kDGLBfloat) {  \
-      typedef __nv_bfloat16 FloatType;                                      \
+      typedef __hip_bfloat16 FloatType;                                      \
       { __VA_ARGS__ }                                                       \
     } else if (                                                             \
         XPU == kDGLCPU && (val).bits == 16 && (val).code == kDGLFloat) {    \
@@ -195,7 +195,7 @@
     }                                                                      \
   } while (0)
 #endif  // BF16_ENABLED
-#else   // DGL_USE_CUDA
+#else   // DGL_USE_ROCM
 #define ATEN_FLOAT_TYPE_SWITCH_16BITS(val, FloatType, XPU, val_name, ...) \
   do {                                                                    \
     CHECK((val).code == kDGLFloat || (val.code == kDGLBfloat))            \
@@ -215,7 +215,7 @@
                  << " can only be bfloat16/float32/float64 on CPU";       \
     }                                                                     \
   } while (0)
-#endif  // DGL_USE_CUDA
+#endif  // DGL_USE_ROCM
 
 /**
  * Dispatch according to data type (int32, int64, float32 or float64):
@@ -361,7 +361,7 @@
   } while (0)
 
 // Macro to dispatch according to device context (allowing cuda)
-#ifdef DGL_USE_CUDA
+#ifdef DGL_USE_ROCM
 #define ATEN_CSR_SWITCH_CUDA(csr, XPU, IdType, op, ...)                \
   ATEN_XPU_SWITCH_CUDA((csr).indptr->ctx.device_type, XPU, op, {       \
     ATEN_ID_TYPE_SWITCH((csr).indptr->dtype, IdType, {{__VA_ARGS__}}); \
@@ -372,10 +372,10 @@
   ATEN_XPU_SWITCH_CUDA((coo).row->ctx.device_type, XPU, op, {       \
     ATEN_ID_TYPE_SWITCH((coo).row->dtype, IdType, {{__VA_ARGS__}}); \
   });
-#else  // DGL_USE_CUDA
+#else  // DGL_USE_ROCM
 #define ATEN_CSR_SWITCH_CUDA ATEN_CSR_SWITCH
 #define ATEN_COO_SWITCH_CUDA ATEN_COO_SWITCH
-#endif  // DGL_USE_CUDA
+#endif  // DGL_USE_ROCM
 
 ///////////////////////// Array checks //////////////////////////
 

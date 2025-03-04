@@ -122,13 +122,13 @@ void DeviceAPI::SyncStreamFromTo(
 }
 
 bool DeviceAPI::PinData(void* ptr, size_t nbytes) {
-  LOG(FATAL) << "Device does not support cudaHostRegister api.";
+  LOG(FATAL) << "Device does not support hipHostRegister api.";
   return false;
 }
 
 void* DeviceAPI::AllocPinnedDataSpace(
     size_t nbytes, void** ctx, void** deleter) {
-  LOG(FATAL) << "Device does not support cudaHostAlloc api.";
+  LOG(FATAL) << "Device does not support hipHostAlloc api.";
   return nullptr;
 }
 
@@ -137,7 +137,7 @@ void DeviceAPI::FreePinnedDataSpace(void** deleter) {
 }
 
 void DeviceAPI::UnpinData(void* ptr) {
-  LOG(FATAL) << "Device does not support cudaHostUnregister api.";
+  LOG(FATAL) << "Device does not support hipHostUnregister api.";
 }
 }  // namespace runtime
 }  // namespace dgl

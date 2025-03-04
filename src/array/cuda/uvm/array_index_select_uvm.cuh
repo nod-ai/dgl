@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 /**
  *  Copyright (c) 2021 by Contributors
  * @file array/cpu/array_index_select_uvm.cuh

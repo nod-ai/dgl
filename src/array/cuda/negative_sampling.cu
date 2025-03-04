@@ -1,15 +1,16 @@
+#include "hip/hip_runtime.h"
 /**
  *  Copyright (c) 2021 by Contributors
  * @file array/cuda/negative_sampling.cu
  * @brief rowwise sampling
  */
 
-#include <curand_kernel.h>
+#include <hiprand/hiprand_kernel.h>
 #include <dgl/array.h>
 #include <dgl/array_iterator.h>
 #include <dgl/random.h>
 
-#include <cub/cub.cuh>
+#include <hipcub/hipcub.hpp>
 
 #include "../../runtime/cuda/cuda_common.h"
 #include "./utils.h"
@@ -31,9 +32,9 @@ __global__ void _GlobalUniformNegativeSamplingKernel(
   int64_t tx = blockIdx.x * blockDim.x + threadIdx.x;
   const int stride_x = gridDim.x * blockDim.x;
 
-  curandStatePhilox4_32_10_t
+  hiprandStatePhilox4_32_10_t
       rng;  // this allows generating 4 32-bit ints at a time
-  curand_init(random_seed * gridDim.x + blockIdx.x, threadIdx.x, 0, &rng);
+  hiprand_init(random_seed * gridDim.x + blockIdx.x, threadIdx.x, 0, &rng);
 
   while (tx < num_samples) {
     for (int i = 0; i < num_trials; ++i) {
@@ -88,7 +89,7 @@ struct IsNotMinusOne {
 template <typename IdType>
 void SortOrderedPairs(
     runtime::DeviceAPI* device, DGLContext ctx, IdType* major, IdType* minor,
-    IdType* tmp_major, IdType* tmp_minor, int64_t n, cudaStream_t stream) {
+    IdType* tmp_major, IdType* tmp_minor, int64_t n, hipStream_t stream) {
   // Sort ordered pairs in lexicographical order by two radix sorts since
   // cub's radix sorts are stable.
   // We need a 2*n auxiliary storage to store the results form the first radix
@@ -98,21 +99,21 @@ void SortOrderedPairs(
   void* tmp2 = nullptr;
 
   // Radix sort by minor key first, reorder the major key in the progress.
-  CUDA_CALL(cub::DeviceRadixSort::SortPairs(
+  CUDA_CALL(hipcub::DeviceRadixSort::SortPairs(
       tmp1, s1, minor, tmp_minor, major, tmp_major, n, 0, sizeof(IdType) * 8,
       stream));
   tmp1 = device->AllocWorkspace(ctx, s1);
-  CUDA_CALL(cub::DeviceRadixSort::SortPairs(
+  CUDA_CALL(hipcub::DeviceRadixSort::SortPairs(
       tmp1, s1, minor, tmp_minor, major, tmp_major, n, 0, sizeof(IdType) * 8,
       stream));
 
   // Radix sort by major key next.
-  CUDA_CALL(cub::DeviceRadixSort::SortPairs(
+  CUDA_CALL(hipcub::DeviceRadixSort::SortPairs(
       tmp2, s2, tmp_major, major, tmp_minor, minor, n, 0, sizeof(IdType) * 8,
       stream));
   tmp2 = (s2 > s1) ? device->AllocWorkspace(ctx, s2)
                    : tmp1;  // reuse buffer if s2 <= s1
-  CUDA_CALL(cub::DeviceRadixSort::SortPairs(
+  CUDA_CALL(hipcub::DeviceRadixSort::SortPairs(
       tmp2, s2, tmp_major, major, tmp_minor, minor, n, 0, sizeof(IdType) * 8,
       stream));
 
@@ -141,7 +142,7 @@ std::pair<IdArray, IdArray> CSRGlobalUniformNegativeSampling(
   IdType* out_row_data = out_row.Ptr<IdType>();
   IdType* out_col_data = out_col.Ptr<IdType>();
   auto device = runtime::DeviceAPI::Get(ctx);
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   const int nt = cuda::FindNumThreads(num_actual_samples);
   const int nb = (num_actual_samples + nt - 1) / nt;
   std::pair<IdArray, IdArray> result;
@@ -159,11 +160,11 @@ std::pair<IdArray, IdArray> CSRGlobalUniformNegativeSampling(
   IsNotMinusOne<IdType> op;
   PairIterator<IdType> begin(row_data, col_data);
   PairIterator<IdType> out_begin(out_row_data, out_col_data);
-  CUDA_CALL(cub::DeviceSelect::If(
+  CUDA_CALL(hipcub::DeviceSelect::If(
       nullptr, tmp_size, begin, out_begin, num_out_cuda, num_actual_samples, op,
       stream));
   void* tmp = device->AllocWorkspace(ctx, tmp_size);
-  CUDA_CALL(cub::DeviceSelect::If(
+  CUDA_CALL(hipcub::DeviceSelect::If(
       tmp, tmp_size, begin, out_begin, num_out_cuda, num_actual_samples, op,
       stream));
   num_out = cuda::GetCUDAScalar(device, ctx, num_out_cuda);
@@ -181,13 +182,13 @@ std::pair<IdArray, IdArray> CSRGlobalUniformNegativeSampling(
 
     size_t tmp_size_unique = 0;
     void* tmp_unique = nullptr;
-    CUDA_CALL(cub::DeviceSelect::Unique(
+    CUDA_CALL(hipcub::DeviceSelect::Unique(
         nullptr, tmp_size_unique, out_begin, unique_begin, num_out_cuda,
         num_out, stream));
     tmp_unique = (tmp_size_unique > tmp_size)
                      ? device->AllocWorkspace(ctx, tmp_size_unique)
                      : tmp;  // reuse buffer
-    CUDA_CALL(cub::DeviceSelect::Unique(
+    CUDA_CALL(hipcub::DeviceSelect::Unique(
         tmp_unique, tmp_size_unique, out_begin, unique_begin, num_out_cuda,
         num_out, stream));
     num_out = cuda::GetCUDAScalar(device, ctx, num_out_cuda);

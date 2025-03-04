@@ -33,9 +33,9 @@
 #if defined(WIN32) || defined(_WIN32)
 #include <windows.h>
 #endif  // WIN32
-#ifdef DGL_USE_CUDA
-#include <cuda_runtime.h>
-#endif  // DGL_USE_CUDA
+#ifdef DGL_USE_ROCM
+#include <hip/hip_runtime.h>
+#endif  // DGL_USE_ROCM
 #include "ndarray.h"
 
 /**
@@ -90,21 +90,21 @@ class TensorDispatcher {
     FUNCCAST(tensoradapter::CPURawDelete, entry)(ptr);
   }
 
-#ifdef DGL_USE_CUDA
+#ifdef DGL_USE_ROCM
   /**
    * @brief Allocate a piece of GPU memory via
    * PyTorch's THCCachingAllocator.
    * Used in CUDADeviceAPI::AllocWorkspace().
    *
    * @note THCCachingAllocator specify the device to allocate on
-   * via cudaGetDevice(). Make sure to call cudaSetDevice()
+   * via hipGetDevice(). Make sure to call hipSetDevice()
    * before invoking this function.
    *
    * @param nbytes The size to be allocated.
    * @param stream The stream to be allocated on.
    * @return Pointer to the allocated memory.
    */
-  inline void* CUDAAllocWorkspace(size_t nbytes, cudaStream_t stream) {
+  inline void* CUDAAllocWorkspace(size_t nbytes, hipStream_t stream) {
     auto entry = entrypoints_[Op::kCUDARawAlloc];
     return FUNCCAST(tensoradapter::CUDARawAlloc, entry)(nbytes, stream);
   }
@@ -125,12 +125,12 @@ class TensorDispatcher {
    * Used in runtime::getCurrentCUDAStream().
    *
    * @note PyTorch pre-allocates/sets the current CUDA stream
-   * on current device via cudaGetDevice(). Make sure to call cudaSetDevice()
+   * on current device via hipGetDevice(). Make sure to call hipSetDevice()
    * before invoking this function.
    *
-   * @return cudaStream_t stream handle
+   * @return hipStream_t stream handle
    */
-  inline cudaStream_t CUDAGetCurrentStream() {
+  inline hipStream_t CUDAGetCurrentStream() {
     auto entry = entrypoints_[Op::kCUDACurrentStream];
     return FUNCCAST(tensoradapter::CUDACurrentStream, entry)();
   }
@@ -183,7 +183,7 @@ class TensorDispatcher {
    * @param device_id Device of the tensor.
    */
   inline void CUDARecordHostAlloc(
-      void* data, void* ctx, cudaStream_t stream, int device_id) {
+      void* data, void* ctx, hipStream_t stream, int device_id) {
     auto entry = entrypoints_[Op::kCUDARecordHostAlloc];
     auto recorded_alloc = FUNCCAST(tensoradapter::CUDARecordHostAlloc, entry);
     recorded_alloc(data, ctx, stream, device_id);
@@ -198,7 +198,7 @@ class TensorDispatcher {
     auto entry = entrypoints_[Op::kCUDAHostAllocatorEmptyCache];
     FUNCCAST(tensoradapter::CUDAHostAllocatorEmptyCache, entry)();
   }
-#endif  // DGL_USE_CUDA
+#endif  // DGL_USE_ROCM
 
   /**
    * @brief Record streams that are using this tensor.
@@ -209,10 +209,10 @@ class TensorDispatcher {
    * @param device_id Device of the tensor.
    */
   inline void RecordStream(void* ptr, DGLStreamHandle stream, int device_id) {
-#ifdef DGL_USE_CUDA
+#ifdef DGL_USE_ROCM
     auto entry = entrypoints_[Op::kRecordStream];
     FUNCCAST(tensoradapter::RecordStream, entry)
-    (ptr, static_cast<cudaStream_t>(stream), device_id);
+    (ptr, static_cast<hipStream_t>(stream), device_id);
 #endif
   }
 
@@ -229,12 +229,12 @@ class TensorDispatcher {
    */
   static constexpr const char* names_[] = {
       "CPURawAlloc",         "CPURawDelete",
-#ifdef DGL_USE_CUDA
+#ifdef DGL_USE_ROCM
       "CUDARawAlloc",        "CUDARawDelete",
       "CUDACurrentStream",   "RecordStream",
       "CUDARawHostAlloc",    "CUDARawHostDelete",
       "CUDARecordHostAlloc", "CUDAHostAllocatorEmptyCache",
-#endif  // DGL_USE_CUDA
+#endif  // DGL_USE_ROCM
   };
 
   /** @brief Index of each function to the symbol list */
@@ -242,7 +242,7 @@ class TensorDispatcher {
    public:
     static constexpr int kCPURawAlloc = 0;
     static constexpr int kCPURawDelete = 1;
-#ifdef DGL_USE_CUDA
+#ifdef DGL_USE_ROCM
     static constexpr int kCUDARawAlloc = 2;
     static constexpr int kCUDARawDelete = 3;
     static constexpr int kCUDACurrentStream = 4;
@@ -251,7 +251,7 @@ class TensorDispatcher {
     static constexpr int kCUDARawHostDelete = 7;
     static constexpr int kCUDARecordHostAlloc = 8;
     static constexpr int kCUDAHostAllocatorEmptyCache = 9;
-#endif  // DGL_USE_CUDA
+#endif  // DGL_USE_ROCM
   };
 
   /** @brief Number of functions */
@@ -260,9 +260,9 @@ class TensorDispatcher {
   /** @brief Entrypoints of each function */
   void* entrypoints_[num_entries_] = {
       nullptr, nullptr,
-#ifdef DGL_USE_CUDA
+#ifdef DGL_USE_ROCM
       nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-#endif  // DGL_USE_CUDA
+#endif  // DGL_USE_ROCM
   };
 
   bool available_ = false;

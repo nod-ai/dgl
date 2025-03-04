@@ -33,7 +33,7 @@ NDArray IndexSelect(NDArray array, IdArray index) {
   const DType* array_data = static_cast<DType*>(cuda::GetDevicePointer(array));
   const IdType* idx_data = static_cast<IdType*>(index->data);
 
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   if (num_feat == 1) {
     const int nt = cuda::FindNumThreads(len);
     const int nb = (len + nt - 1) / nt;
@@ -61,9 +61,9 @@ template NDArray IndexSelect<kDGLCUDA, int64_t, int64_t>(NDArray, IdArray);
 template NDArray IndexSelect<kDGLCUDA, __half, int32_t>(NDArray, IdArray);
 template NDArray IndexSelect<kDGLCUDA, __half, int64_t>(NDArray, IdArray);
 #if BF16_ENABLED
-template NDArray IndexSelect<kDGLCUDA, __nv_bfloat16, int32_t>(
+template NDArray IndexSelect<kDGLCUDA, __hip_bfloat16, int32_t>(
     NDArray, IdArray);
-template NDArray IndexSelect<kDGLCUDA, __nv_bfloat16, int64_t>(
+template NDArray IndexSelect<kDGLCUDA, __hip_bfloat16, int64_t>(
     NDArray, IdArray);
 #endif  // BF16_ENABLED
 template NDArray IndexSelect<kDGLCUDA, float, int32_t>(NDArray, IdArray);
@@ -87,7 +87,7 @@ template uint32_t IndexSelect<kDGLCUDA, uint32_t>(NDArray array, int64_t index);
 template uint64_t IndexSelect<kDGLCUDA, uint64_t>(NDArray array, int64_t index);
 template __half IndexSelect<kDGLCUDA, __half>(NDArray array, int64_t index);
 #if BF16_ENABLED
-template __nv_bfloat16 IndexSelect<kDGLCUDA, __nv_bfloat16>(
+template __hip_bfloat16 IndexSelect<kDGLCUDA, __hip_bfloat16>(
     NDArray array, int64_t index);
 #endif  // BF16_ENABLED
 template float IndexSelect<kDGLCUDA, float>(NDArray array, int64_t index);

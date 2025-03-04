@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 /**
  *  Copyright (c) 2019 by Contributors
  * @file array/cuda/array_scatter.cu
@@ -31,7 +32,7 @@ void Scatter_(IdArray index, NDArray value, NDArray out) {
   const DType* val = value.Ptr<DType>();
   DType* outd = out.Ptr<DType>();
 
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   const int nt = cuda::FindNumThreads(len);
   const int nb = (len + nt - 1) / nt;
   CUDA_KERNEL_CALL(_ScatterKernel, nb, nt, 0, stream, idx, val, len, outd);
@@ -41,7 +42,7 @@ template void Scatter_<kDGLCUDA, int32_t, int32_t>(IdArray, NDArray, NDArray);
 template void Scatter_<kDGLCUDA, int64_t, int32_t>(IdArray, NDArray, NDArray);
 template void Scatter_<kDGLCUDA, __half, int32_t>(IdArray, NDArray, NDArray);
 #if BF16_ENABLED
-template void Scatter_<kDGLCUDA, __nv_bfloat16, int32_t>(
+template void Scatter_<kDGLCUDA, __hip_bfloat16, int32_t>(
     IdArray, NDArray, NDArray);
 #endif  // BF16_ENABLED
 template void Scatter_<kDGLCUDA, float, int32_t>(IdArray, NDArray, NDArray);
@@ -50,7 +51,7 @@ template void Scatter_<kDGLCUDA, int32_t, int64_t>(IdArray, NDArray, NDArray);
 template void Scatter_<kDGLCUDA, int64_t, int64_t>(IdArray, NDArray, NDArray);
 template void Scatter_<kDGLCUDA, __half, int64_t>(IdArray, NDArray, NDArray);
 #if BF16_ENABLED
-template void Scatter_<kDGLCUDA, __nv_bfloat16, int64_t>(
+template void Scatter_<kDGLCUDA, __hip_bfloat16, int64_t>(
     IdArray, NDArray, NDArray);
 #endif  // BF16_ENABLED
 template void Scatter_<kDGLCUDA, float, int64_t>(IdArray, NDArray, NDArray);

@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 /**
  *  Copyright (c) 2022 by Contributors
  * @file array/cuda/rowwise_sampling_prob.cu
@@ -6,11 +7,11 @@
  * sampling code rowwise_sampling.cu.
  * @author pengqirong (OPPO), dlasalle and Xin from Nvidia.
  */
-#include <curand_kernel.h>
+#include <hiprand/hiprand_kernel.h>
 #include <dgl/random.h>
 #include <dgl/runtime/device_api.h>
 
-#include <cub/cub.cuh>
+#include <hipcub/hipcub.hpp>
 #include <numeric>
 
 #include "../../array/cuda/atomic.cuh"
@@ -19,7 +20,7 @@
 
 // require CUB 1.17 to use DeviceSegmentedSort
 static_assert(
-    CUB_VERSION >= 101700, "Require CUB >= 1.17 to use DeviceSegmentedSort");
+    HIPCUB_VERSION >= 101700, "Require CUB >= 1.17 to use DeviceSegmentedSort");
 
 namespace dgl {
 using namespace cuda;
@@ -159,8 +160,8 @@ __global__ void _CSRAResValueKernel(
   const int64_t last_row =
       min(static_cast<int64_t>(blockIdx.x + 1) * TILE_SIZE, num_rows);
 
-  curandStatePhilox4_32_10_t rng;
-  curand_init(rand_seed * gridDim.x + blockIdx.x, threadIdx.x, 0, &rng);
+  hiprandStatePhilox4_32_10_t rng;
+  hiprand_init(rand_seed * gridDim.x + blockIdx.x, threadIdx.x, 0, &rng);
 
   while (out_row < last_row) {
     const int64_t row = in_rows[out_row];
@@ -179,7 +180,7 @@ __global__ void _CSRAResValueKernel(
             prob, data, idx, in_row_start, &item_prob);
         // compute A-Res value
         ares[ares_idx] = static_cast<FloatType>(
-            __powf(curand_uniform(&rng), 1.0f / item_prob));
+            __powf(hiprand_uniform(&rng), 1.0f / item_prob));
         ares_idxs[ares_idx] = static_cast<IdType>(in_idx);
       }
     }
@@ -317,8 +318,8 @@ __global__ void _CSRRowWiseSampleReplaceKernel(
   const int64_t last_row =
       min(static_cast<int64_t>(blockIdx.x + 1) * TILE_SIZE, num_rows);
 
-  curandStatePhilox4_32_10_t rng;
-  curand_init(rand_seed * gridDim.x + blockIdx.x, threadIdx.x, 0, &rng);
+  hiprandStatePhilox4_32_10_t rng;
+  hiprand_init(rand_seed * gridDim.x + blockIdx.x, threadIdx.x, 0, &rng);
 
   while (out_row < last_row) {
     const int64_t row = in_rows[out_row];
@@ -330,7 +331,7 @@ __global__ void _CSRRowWiseSampleReplaceKernel(
 
     if (deg > 0) {
       // Specialize BlockScan for a 1D block of BLOCK_SIZE threads
-      typedef cub::BlockScan<FloatType, BLOCK_SIZE> BlockScan;
+      typedef hipcub::BlockScan<FloatType, BLOCK_SIZE> BlockScan;
       // Allocate shared memory for BlockScan
       __shared__ typename BlockScan::TempStorage temp_storage;
       // Initialize running total
@@ -362,10 +363,10 @@ __global__ void _CSRRowWiseSampleReplaceKernel(
       for (int64_t idx = threadIdx.x; idx < num_picks; idx += BLOCK_SIZE) {
         // get random value
         FloatType sum = cdf[cdf_row_start + deg - 1];
-        FloatType rand = static_cast<FloatType>(curand_uniform(&rng) * sum);
+        FloatType rand = static_cast<FloatType>(hiprand_uniform(&rng) * sum);
         // get the offset of the first value within cdf array which is greater
         // than random value.
-        int64_t item = cub::UpperBound<FloatType*, int64_t, FloatType>(
+        int64_t item = hipcub::UpperBound<FloatType*, int64_t, FloatType>(
             &cdf[cdf_row_start], deg, rand);
         item = min(item, deg - 1);
         // get in and out index
@@ -441,7 +442,7 @@ COOMatrix _COORemoveIf(
     const COOMatrix& coo, const NDArray& values, DType criteria) {
   const DType* val = values.Ptr<DType>();
   auto maskgen = [val, criteria](
-                     int nb, int nt, cudaStream_t stream, int64_t nnz,
+                     int nb, int nt, hipStream_t stream, int64_t nnz,
                      const IdType* data, int8_t* flags) {
     CUDA_KERNEL_CALL(
         (_GenerateFlagsKernel<IdType, DType, int8_t>), nb, nt, 0, stream, nnz,
@@ -481,7 +482,7 @@ COOMatrix _CSRRowWiseSampling(
     const FloatArray& prob, bool replace) {
   const auto& ctx = rows->ctx;
   auto device = runtime::DeviceAPI::Get(ctx);
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
 
   const int64_t num_rows = rows->shape[0];
   const IdType* const slice_rows = static_cast<const IdType*>(rows->data);
@@ -530,10 +531,10 @@ COOMatrix _CSRRowWiseSampling(
   IdType* temp_ptr = static_cast<IdType*>(
       device->AllocWorkspace(ctx, (num_rows + 1) * sizeof(IdType)));
   size_t prefix_temp_size = 0;
-  CUDA_CALL(cub::DeviceScan::ExclusiveSum(
+  CUDA_CALL(hipcub::DeviceScan::ExclusiveSum(
       nullptr, prefix_temp_size, temp_deg, temp_ptr, num_rows + 1, stream));
   void* prefix_temp = device->AllocWorkspace(ctx, prefix_temp_size);
-  CUDA_CALL(cub::DeviceScan::ExclusiveSum(
+  CUDA_CALL(hipcub::DeviceScan::ExclusiveSum(
       prefix_temp, prefix_temp_size, temp_deg, temp_ptr, num_rows + 1, stream));
   device->FreeWorkspace(ctx, prefix_temp);
   device->FreeWorkspace(ctx, temp_deg);
@@ -551,16 +552,16 @@ COOMatrix _CSRRowWiseSampling(
   IdType* out_ptr = static_cast<IdType*>(
       device->AllocWorkspace(ctx, (num_rows + 1) * sizeof(IdType)));
   prefix_temp_size = 0;
-  CUDA_CALL(cub::DeviceScan::ExclusiveSum(
+  CUDA_CALL(hipcub::DeviceScan::ExclusiveSum(
       nullptr, prefix_temp_size, out_deg, out_ptr, num_rows + 1, stream));
   prefix_temp = device->AllocWorkspace(ctx, prefix_temp_size);
-  CUDA_CALL(cub::DeviceScan::ExclusiveSum(
+  CUDA_CALL(hipcub::DeviceScan::ExclusiveSum(
       prefix_temp, prefix_temp_size, out_deg, out_ptr, num_rows + 1, stream));
   device->FreeWorkspace(ctx, prefix_temp);
   device->FreeWorkspace(ctx, out_deg);
 
-  cudaEvent_t copyEvent;
-  CUDA_CALL(cudaEventCreate(&copyEvent));
+  hipEvent_t copyEvent;
+  CUDA_CALL(hipEventCreate(&copyEvent));
   // TODO(dlasalle): use pinned memory to overlap with the actual sampling, and
   // wait on a cudaevent
   IdType new_len;
@@ -568,7 +569,7 @@ COOMatrix _CSRRowWiseSampling(
   device->CopyDataFromTo(
       out_ptr, num_rows * sizeof(new_len), &new_len, 0, sizeof(new_len), ctx,
       DGLContext{kDGLCPU, 0}, mat.indptr->dtype);
-  CUDA_CALL(cudaEventRecord(copyEvent, stream));
+  CUDA_CALL(hipEventRecord(copyEvent, stream));
 
   // allocate workspace
   // 1) for w/ replacement, it's a global buffer to store cdf segments (one
@@ -612,16 +613,16 @@ COOMatrix _CSRRowWiseSampling(
     IdType* sort_temp_idxs = static_cast<IdType*>(
         device->AllocWorkspace(ctx, temp_len * sizeof(IdType)));
 
-    cub::DoubleBuffer<FloatType> sort_keys(temp, sort_temp);
-    cub::DoubleBuffer<IdType> sort_values(temp_idxs, sort_temp_idxs);
+    hipcub::DoubleBuffer<FloatType> sort_keys(temp, sort_temp);
+    hipcub::DoubleBuffer<IdType> sort_values(temp_idxs, sort_temp_idxs);
 
     void* d_temp_storage = nullptr;
     size_t temp_storage_bytes = 0;
-    CUDA_CALL(cub::DeviceSegmentedSort::SortPairsDescending(
+    CUDA_CALL(hipcub::DeviceSegmentedSort::SortPairsDescending(
         d_temp_storage, temp_storage_bytes, sort_keys, sort_values, temp_len,
         num_rows, temp_ptr, temp_ptr + 1, stream));
     d_temp_storage = device->AllocWorkspace(ctx, temp_storage_bytes);
-    CUDA_CALL(cub::DeviceSegmentedSort::SortPairsDescending(
+    CUDA_CALL(hipcub::DeviceSegmentedSort::SortPairsDescending(
         d_temp_storage, temp_storage_bytes, sort_keys, sort_values, temp_len,
         num_rows, temp_ptr, temp_ptr + 1, stream));
     device->FreeWorkspace(ctx, d_temp_storage);
@@ -641,8 +642,8 @@ COOMatrix _CSRRowWiseSampling(
   device->FreeWorkspace(ctx, out_ptr);
 
   // wait for copying `new_len` to finish
-  CUDA_CALL(cudaEventSynchronize(copyEvent));
-  CUDA_CALL(cudaEventDestroy(copyEvent));
+  CUDA_CALL(hipEventSynchronize(copyEvent));
+  CUDA_CALL(hipEventDestroy(copyEvent));
 
   picked_row = picked_row.CreateView({new_len}, picked_row->dtype);
   picked_col = picked_col.CreateView({new_len}, picked_col->dtype);

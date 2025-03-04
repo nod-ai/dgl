@@ -55,7 +55,7 @@ void SpMMCsrHetero(
       if (m == 0) continue;
       DType* out = static_cast<DType*>(device->AllocWorkspace(
           vec_csr[0].indptr->ctx, m * n * sizeof(DType)));
-      CUDA_CALL(cudaMemset(out, 0, m * n * sizeof(DType)));
+      CUDA_CALL(hipMemset(out, 0, m * n * sizeof(DType)));
       trans_out[ntype] = out;
     }
   }
@@ -116,7 +116,7 @@ void SpMMCsrHetero(
     }
   }
 
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   for (dgl_type_t etype = 0; etype < ufeat_ntids.size(); ++etype) {
     const dgl_type_t src_id = ufeat_ntids[etype];
     const dgl_type_t dst_id = out_ntids[etype];
@@ -214,14 +214,14 @@ template void SpMMCsrHetero<kDGLCUDA, int64_t, __half>(
     const std::vector<dgl_type_t>& ufeat_ntids,
     const std::vector<dgl_type_t>& out_ntids);
 #if BF16_ENABLED
-template void SpMMCsrHetero<kDGLCUDA, int32_t, __nv_bfloat16>(
+template void SpMMCsrHetero<kDGLCUDA, int32_t, __hip_bfloat16>(
     const std::string& op, const std::string& reduce, const BcastOff& bcast,
     const std::vector<CSRMatrix>& csr, const std::vector<NDArray>& ufeat,
     const std::vector<NDArray>& efeat, std::vector<NDArray>* out,
     std::vector<std::vector<NDArray>>* out_aux,
     const std::vector<dgl_type_t>& ufeat_ntids,
     const std::vector<dgl_type_t>& out_ntids);
-template void SpMMCsrHetero<kDGLCUDA, int64_t, __nv_bfloat16>(
+template void SpMMCsrHetero<kDGLCUDA, int64_t, __hip_bfloat16>(
     const std::string& op, const std::string& reduce, const BcastOff& bcast,
     const std::vector<CSRMatrix>& csr, const std::vector<NDArray>& ufeat,
     const std::vector<NDArray>& efeat, std::vector<NDArray>* out,

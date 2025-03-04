@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 /**
  *  Copyright (c) 2020 by Contributors
  * @file array/cuda/utils.h
@@ -11,7 +12,7 @@
 #include <dgl/runtime/ndarray.h>
 #include <dmlc/logging.h>
 
-#include <cub/cub.cuh>
+#include <hipcub/hipcub.hpp>
 #include <type_traits>
 
 #include "../../runtime/cuda/cuda_common.h"
@@ -126,7 +127,7 @@ __global__ void _FillKernel(DType* ptr, size_t length, DType val) {
 /** @brief Fill the vector started from ptr of size length with val */
 template <typename DType>
 void _Fill(DType* ptr, size_t length, DType val) {
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   int nt = FindNumThreads(length);
   int nb =
       (length + nt - 1) / nt;  // on x-axis, no need to worry about upperbound.
@@ -185,8 +186,8 @@ template <typename IdType>
 __global__ void _LinearSearchKernel(
     const IdType* indptr, const IdType* indices, const IdType* data,
     const IdType* row, const IdType* col, int64_t row_stride,
-    int64_t col_stride, int64_t length, const __nv_bfloat16* weights,
-    __nv_bfloat16 filler, __nv_bfloat16* out) {
+    int64_t col_stride, int64_t length, const __hip_bfloat16* weights,
+    __hip_bfloat16 filler, __hip_bfloat16* out) {
   int tx = blockIdx.x * blockDim.x + threadIdx.x;
   const int stride_x = gridDim.x * blockDim.x;
   while (tx < length) {
@@ -204,7 +205,7 @@ __global__ void _LinearSearchKernel(
     } else {
       // If the result is saved in bf16, it should be fine to convert it to
       // float first
-      out[tx] = weights ? weights[v] : __nv_bfloat16(static_cast<float>(v));
+      out[tx] = weights ? weights[v] : __hip_bfloat16(static_cast<float>(v));
     }
     tx += stride_x;
   }
@@ -277,12 +278,12 @@ template <typename DType, typename BoolType>
 void MaskSelect(
     runtime::DeviceAPI* device, const DGLContext& ctx, const DType* input,
     const BoolType* mask, DType* output, int64_t n, int64_t* rst,
-    cudaStream_t stream) {
+    hipStream_t stream) {
   size_t workspace_size = 0;
-  CUDA_CALL(cub::DeviceSelect::Flagged(
+  CUDA_CALL(hipcub::DeviceSelect::Flagged(
       nullptr, workspace_size, input, mask, output, rst, n, stream));
   void* workspace = device->AllocWorkspace(ctx, workspace_size);
-  CUDA_CALL(cub::DeviceSelect::Flagged(
+  CUDA_CALL(hipcub::DeviceSelect::Flagged(
       workspace, workspace_size, input, mask, output, rst, n, stream));
   device->FreeWorkspace(ctx, workspace);
 }
@@ -290,7 +291,7 @@ void MaskSelect(
 inline void* GetDevicePointer(runtime::NDArray array) {
   void* ptr = array->data;
   if (array.IsPinned()) {
-    CUDA_CALL(cudaHostGetDevicePointer(&ptr, ptr, 0));
+    CUDA_CALL(hipHostGetDevicePointer(&ptr, ptr, 0));
   }
   return ptr;
 }

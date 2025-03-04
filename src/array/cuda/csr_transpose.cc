@@ -24,12 +24,12 @@ template <>
 CSRMatrix CSRTranspose<kDGLCUDA, int32_t>(CSRMatrix csr) {
 #if CUDART_VERSION < 12000
   auto* thr_entry = runtime::CUDAThreadEntry::ThreadLocal();
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  hipStream_t stream = runtime::getCurrentCUDAStream();
   // allocate cusparse handle if needed
   if (!thr_entry->cusparse_handle) {
-    CUSPARSE_CALL(cusparseCreate(&(thr_entry->cusparse_handle)));
+    CUSPARSE_CALL(hipsparseCreate(&(thr_entry->cusparse_handle)));
   }
-  CUSPARSE_CALL(cusparseSetStream(thr_entry->cusparse_handle, stream));
+  CUSPARSE_CALL(hipsparseSetStream(thr_entry->cusparse_handle, stream));
 
   NDArray indptr = csr.indptr, indices = csr.indices, data = csr.data;
   const int64_t nnz = indices->shape[0];
@@ -53,26 +53,26 @@ CSRMatrix CSRTranspose<kDGLCUDA, int32_t>(CSRMatrix csr) {
   auto device = runtime::DeviceAPI::Get(csr.indptr->ctx);
   // workspace
   size_t workspace_size;
-  CUSPARSE_CALL(cusparseCsr2cscEx2_bufferSize(
+  CUSPARSE_CALL(hipsparseCsr2cscEx2_bufferSize(
       thr_entry->cusparse_handle, csr.num_rows, csr.num_cols, nnz, data_ptr,
       indptr_ptr, indices_ptr, t_data_ptr, t_indptr_ptr, t_indices_ptr,
-      CUDA_R_32F, CUSPARSE_ACTION_NUMERIC, CUSPARSE_INDEX_BASE_ZERO,
-      CUSPARSE_CSR2CSC_ALG1,  // see cusparse doc for reference
+      HIP_R_32F, HIPSPARSE_ACTION_NUMERIC, HIPSPARSE_INDEX_BASE_ZERO,
+      HIPSPARSE_CSR2CSC_ALG1,  // see cusparse doc for reference
       &workspace_size));
   void* workspace = device->AllocWorkspace(ctx, workspace_size);
-  CUSPARSE_CALL(cusparseCsr2cscEx2(
+  CUSPARSE_CALL(hipsparseCsr2cscEx2(
       thr_entry->cusparse_handle, csr.num_rows, csr.num_cols, nnz, data_ptr,
       indptr_ptr, indices_ptr, t_data_ptr, t_indptr_ptr, t_indices_ptr,
-      CUDA_R_32F, CUSPARSE_ACTION_NUMERIC, CUSPARSE_INDEX_BASE_ZERO,
-      CUSPARSE_CSR2CSC_ALG1,  // see cusparse doc for reference
+      HIP_R_32F, HIPSPARSE_ACTION_NUMERIC, HIPSPARSE_INDEX_BASE_ZERO,
+      HIPSPARSE_CSR2CSC_ALG1,  // see cusparse doc for reference
       workspace));
   device->FreeWorkspace(ctx, workspace);
 #else
-  CUSPARSE_CALL(cusparseScsr2csc(
+  CUSPARSE_CALL(hipsparseScsr2csc(
       thr_entry->cusparse_handle, csr.num_rows, csr.num_cols, nnz,
       static_cast<const float*>(data_ptr), indptr_ptr, indices_ptr,
       static_cast<float*>(t_data_ptr), t_indices_ptr, t_indptr_ptr,
-      CUSPARSE_ACTION_NUMERIC, CUSPARSE_INDEX_BASE_ZERO));
+      HIPSPARSE_ACTION_NUMERIC, HIPSPARSE_INDEX_BASE_ZERO));
 #endif
 
   return CSRMatrix(
