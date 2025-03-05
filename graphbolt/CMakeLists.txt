@@ -13,61 +13,10 @@ elseif(USE_ROCM)
   add_definitions(-DHIP_ENABLE_WARP_SYNC_BUILTINS)
   set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -Wno-instantiation-after-specialization")
   enable_language(HIP)
-
-  include(FetchContent)
-
-  FetchContent_Declare(
-    prim
-    OVERRIDE_FIND_PACKAGE
-    GIT_REPOSITORY https://github.com/ROCm/rocPRIM.git
-    # This is the first working version that provides everything graphbolt relies on.
-    # This involves several rounds of backported fixes, so it is not a specific
-    # feature being added here.
-    GIT_TAG        f1d714d1d91ec034e1cc37fae6f3afe7afabb29e
-  )
-  FetchContent_MakeAvailable(prim)
-
-  # Manually add aliases that rocm libraries implement to prevent conflicts
-  add_library(roc::rocprim ALIAS rocprim)
-  add_library(roc::rocprim_hip ALIAS rocprim_hip)
-
-  # -------------------------
-  # Fetch and add hipCUB
-  # -------------------------
-  FetchContent_Declare(
-    hipcub
-    OVERRIDE_FIND_PACKAGE
-    GIT_REPOSITORY https://github.com/tpopp/hipCUB.git
-    # Use a patched hipCUB that exposes Bulk from device_for.hpp
-    GIT_TAG        f342111197dd020f1c4210b16aa550b08992e97b
-  )
-  FetchContent_MakeAvailable(hipcub)
-
-  # -------------------------
-  # Fetch and add libhipcxx
-  # -------------------------
-  # We need libhipcxx which isn't part of /opt/rocm by default. v2.2.0 is the most recent version.
-  FetchContent_Declare(
-    libhipcxx
-    OVERRIDE_FIND_PACKAGE
-    GIT_REPOSITORY https://github.com/ROCm/libhipcxx.git
-    GIT_TAG        v2.2.0
-  )
-  FetchContent_MakeAvailable(libhipcxx)
-
-  # -------------------------
-  # Fetch and add hipCollections
-  # -------------------------
-  # Use a patched hipCollections that is compatible with libhipcxx
-  FetchContent_Declare(
-    cuco
-    OVERRIDE_FIND_PACKAGE
-    GIT_REPOSITORY https://github.com/tpopp/hipCollections.git
-    GIT_TAG        6e31da8fd309f229d28adde8583a30bb4efaf1b7
-  )
-  FetchContent_MakeAvailable(cuco)
-
-  # Include rocthrust after other fetches to prevent using unpatched dependencies
+  find_package(rocprim)
+  find_package(hipcub)
+  find_package(libhipcxx)
+  find_package(cuco)
   find_package(rocthrust REQUIRED)
   set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -I${HIP_INCLUDE_DIRS}")
 endif()
@@ -264,14 +213,14 @@ if(USE_ROCM)
 
   include_directories(AFTER "../third_party/HugeCTR/gpu_cache/include")
   include_directories(
-    $<TARGET_PROPERTY:cuco,INTERFACE_INCLUDE_DIRECTORIES>
-    $<TARGET_PROPERTY:hipcub,INTERFACE_INCLUDE_DIRECTORIES>
+    $<TARGET_PROPERTY:cuco::cuco,INTERFACE_INCLUDE_DIRECTORIES>
+    $<TARGET_PROPERTY:hip::hipcub,INTERFACE_INCLUDE_DIRECTORIES>
     )
   target_link_libraries(${LIB_GRAPHBOLT_ROCM_NAME}  PRIVATE
-    cuco
+    cuco::cuco
     hip::device
     hip::host
-    hipcub
+    hip::hipcub
     roc::rocprim_hip
     roc::rocthrust
   )
