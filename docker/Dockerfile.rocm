@@ -1,5 +1,5 @@
 # Docker container for running DGL on AMD GPUs with ROCM
-FROM rocm/pytorch:rocm6.3.1_ubuntu22.04_py3.10_pytorch
+FROM rocm/pytorch:rocm6.3.3_ubuntu22.04_py3.10_pytorch_release_2.4.0
 
 # Clang for compiling DGL
 # We need https://github.com/llvm/llvm-project/pull/93976
@@ -17,10 +17,31 @@ ENV CXX=/usr/bin/clang++-19
 # Gather additional or updated ROCm libraries
 ARG GPU_TARGETS="gfx942"
 WORKDIR /git
-RUN (git clone https://github.com/ROCm/rocPRIM.git && cd rocPRIM && git checkout f1d714d1d91ec034e1cc37fae6f3afe7afabb29e && mkdir build && cd build && cmake -DCMAKE_HIP_ARCHITECTURES="${GPU_TARGETS}" -DCMAKE_INSTALL_PREFIX=/opt/rocm .. && 
-make install ) \
-    && (git clone https://github.com/tpopp/hipCUB.git && cd hipCUB && git checkout f342111197dd020f1c4210b16aa550b08992e97b && mkdir build && cd build && cmake -DCMAKE_HIP_ARCHITECTURES="${GPU_TARGETS}" -DCMAKE_INSTALL_PREFIX=/opt/rocm .. && make install) \
-    && (git clone https://github.com/ROCm/libhipcxx.git && cd libhipcxx && git checkout v2.2.0 && mkdir build && cd build && cmake -DCMAKE_HIP_ARCHITECTURES="${GPU_TARGETS}" -DCMAKE_INSTALL_PREFIX=/opt/rocm .. && make install ) \
-    && (git clone https://github.com/tpopp/hipCollections.git && cd hipCollections && git checkout 6e31da8fd309f229d28adde8583a30bb4efaf1b7 && mkdir build && cd build && cmake -DCMAKE_INSTALL_PREFIX=/opt/rocm -DINSTALL_CUCO=ON -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_HIP_ARCHITECTURES="${GPU_TARGETS}" .. && make install ) \
-    && (git clone https://github.com/tpopp/rocThrust.git && cd rocThrust && git checkout 613db9a025709fb18f2a676543a17850bd231b04 && mkdir build && cd build && cmake -DCMAKE_INSTALL_PREFIX=/opt/rocm -DCMAKE_HIP_ARCHITECTURES="${GPU_TARGETS}" .. && make install ) \
+RUN (git clone https://github.com/tpopp/hipCUB.git && cd hipCUB && git checkout f342111197dd020f1c4210b16aa550b08992e97b \
+      && mkdir build && cd build \
+      && cmake -DCMAKE_HIP_ARCHITECTURES="${GPU_TARGETS}" -DCMAKE_INSTALL_PREFIX=/opt/rocm .. && make install) \
+    && (git clone https://github.com/ROCm/libhipcxx.git && cd libhipcxx && git checkout v2.2.0 \
+      && mkdir build && cd build \
+      && cmake -DCMAKE_HIP_ARCHITECTURES="${GPU_TARGETS}" -DCMAKE_INSTALL_PREFIX=/opt/rocm .. && make install ) \
+    && (git clone https://github.com/tpopp/hipCollections.git && cd hipCollections && git checkout 6e31da8fd309f229d28adde8583a30bb4efaf1b7 \
+      && mkdir build && cd build \
+      && cmake -DCMAKE_INSTALL_PREFIX=/opt/rocm -DINSTALL_CUCO=ON -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_HIP_ARCHITECTURES="${GPU_TARGETS}" .. \
+      && make install ) \
+    && (git clone https://github.com/tpopp/rocThrust.git && cd rocThrust && git checkout 613db9a025709fb18f2a676543a17850bd231b04 \
+      && mkdir build && cd build \
+      && cmake -DCMAKE_INSTALL_PREFIX=/opt/rocm -DCMAKE_HIP_ARCHITECTURES="${GPU_TARGETS}" .. && make install ) \
     && rm -rf /git
+
+
+# Patch ROCM headers with a couple of rocPrim fixes/additions needed by various consumers.
+# ROCm is for DeviceCopy.
+# StreamHPC is for select features.
+WORKDIR /patch-rocm
+RUN apt-get update \
+    && apt-get install -y patchutils \
+    && wget https://patch-diff.githubusercontent.com/raw/ROCm/rocPRIM/pull/662.patch \
+    && wget https://github.com/StreamHPC/rocPRIM/commit/4dde14b4a4fa7d32123ff01034f608afa5b38c8b.patch \
+    && cd /opt/rocm/ \
+    && filterdiff /patch-rocm/662.patch --strip-match=2 --strip=2 -i 'include/*' | patch -p0 \
+    && filterdiff /patch-rocm/4dde14b4a4fa7d32123ff01034f608afa5b38c8b.patch --strip-match=2 --strip=2 -i 'include/*' | patch -p0 \
+    && rm -rf /patch-rocm
