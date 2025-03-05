@@ -90,7 +90,7 @@ for src in ${all_srcs[@]}; do
         s@\bhip_bfloat16\b@__hip_bfloat16@g # hipify uses the old one
         s@\bnv_bfloat16\b@hip_bfloat16@g # For some reason, some graphbolt dependencies need the old version
         s@\b__trap();@abort();@
-        s@_hip.h@.h@
+        s@_hip.h@.h@ # Not sure why hipify is changing the import name, though the file name is the original.
 EOF
 
     # If no changes were made, delete the prehip file.
