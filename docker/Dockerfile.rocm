@@ -30,7 +30,7 @@ ENV CC=/usr/bin/clang-19
 ENV CXX=/usr/bin/clang++-19
 
 # Gather additional or updated ROCm libraries
-ARG GPU_TARGETS="gfx940;gfx942"
+ARG GPU_TARGETS="gfx90a;gfx940;gfx942"
 WORKDIR /git
 RUN (git clone https://github.com/tpopp/hipCUB.git && cd hipCUB && git checkout f342111197dd020f1c4210b16aa550b08992e97b \
       && mkdir build && cd build \

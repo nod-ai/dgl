@@ -28,7 +28,7 @@
 #include <hip/hip_runtime.h>
 #endif
 
-#if __CUDA_ARCH__ || __HIP_DEVICE_COMPILE__
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
 #include <curand_kernel.h>
 #else
 #include <pcg_random.hpp>
@@ -62,7 +62,7 @@ class continuous_seed {
 
   uint64_t get_seed(int i) const { return s[i != 0]; }
 
-#if __CUDA_ARCH__ || __HIP_DEVICE_COMPILE__
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
   __device__ inline float uniform(const uint64_t t) const {
     const uint64_t kCurandSeed = 999961;  // Could be any random number.
     curandStatePhilox4_32_10_t rng;
@@ -107,7 +107,7 @@ class single_seed {
   single_seed(torch::Tensor seed_arr)
       : seed_(seed_arr.data_ptr<int64_t>()[0]) {}
 
-#if __CUDA_ARCH__ || __HIP_DEVICE_COMPILE__
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
   __device__ inline float uniform(const uint64_t id) const {
     const uint64_t kCurandSeed = 999961;  // Could be any random number.
     curandStatePhilox4_32_10_t rng;
