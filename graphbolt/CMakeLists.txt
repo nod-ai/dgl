@@ -7,6 +7,18 @@ if(USE_CUDA)
   message(STATUS "Build graphbolt with CUDA support")
   enable_language(CUDA)
   add_definitions(-DGRAPHBOLT_USE_CUDA)
+elseif(USE_ROCM)
+  add_definitions(-DGRAPHBOLT_USE_ROCM)
+  add_definitions(-DDGL_USE_ROCM)
+  add_definitions(-DHIP_ENABLE_WARP_SYNC_BUILTINS)
+  set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -Wno-instantiation-after-specialization")
+  enable_language(HIP)
+  find_package(rocprim)
+  find_package(hipcub)
+  find_package(libhipcxx)
+  find_package(cuco)
+  find_package(rocthrust REQUIRED)
+  set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -I${HIP_INCLUDE_DIRS}")
 endif()
 
 # For windows, define NOMINMAX to avoid conflict with std::min/max
@@ -73,15 +85,32 @@ if(USE_CUDA)
   set(LIB_GRAPHBOLT_CUDA_NAME "${LIB_GRAPHBOLT_NAME}_cuda")
 endif()
 
+if(USE_ROCM)
+  file(GLOB BOLT_HIP_SRC
+    ${BOLT_DIR}/cuda/*.cu
+    ${BOLT_DIR}/cuda/*.cc
+  )
+  list(APPEND BOLT_SRC ${BOLT_HIP_SRC})
+  set_source_files_properties(${BOLT_SRC} PROPERTIES LANGUAGE HIP)
+  set(LIB_GRAPHBOLT_ROCM_NAME "${LIB_GRAPHBOLT_NAME}_rocm")
+endif()
+
+
 add_library(${LIB_GRAPHBOLT_NAME} SHARED ${BOLT_SRC} ${BOLT_HEADERS})
 include_directories(BEFORE ${BOLT_DIR}
                            ${BOLT_HEADERS}
-                           # For CXX20 features:
-                           # `std::atomic_ref`, `std::counting_semaphore`
-                           "../third_party/cccl/libcudacxx/include"
                            "../third_party/pcg/include"
                            "../third_party/tsl_robin_map/include")
+if(NOT USE_ROCM)
+  # This is cuda specific, while ROCM fetches the libhipcxx repository.
+  include_directories(BEFORE # For CXX20 features:
+    # `std::atomic_ref`, `std::counting_semaphore`
+    "../third_party/cccl/libcudacxx/include"
+  )
+endif()
+
 target_link_libraries(${LIB_GRAPHBOLT_NAME} "${TORCH_LIBRARIES}")
+
 if(BUILD_WITH_TASKFLOW)
   target_include_directories(${LIB_GRAPHBOLT_NAME} PRIVATE "../third_party/taskflow")
   target_compile_definitions(${LIB_GRAPHBOLT_NAME} PRIVATE BUILD_WITH_TASKFLOW=1)
@@ -156,6 +185,49 @@ if(USE_CUDA)
 
   target_link_libraries(${LIB_GRAPHBOLT_NAME} ${LIB_GRAPHBOLT_CUDA_NAME})
 endif()
+
+if(USE_ROCM)
+  file(GLOB graphbolt_gpu_cache_src
+    ../third_party/HugeCTR/gpu_cache/src/nv_gpu_cache.cu
+    )
+  set_source_files_properties(${graphbolt_gpu_cache_src} PROPERTIES LANGUAGE HIP)
+  add_library(graphbolt_gpu_cache STATIC ${graphbolt_gpu_cache_src})
+  target_include_directories(graphbolt_gpu_cache PRIVATE "../third_party/HugeCTR/gpu_cache/include")
+  target_compile_options(graphbolt_gpu_cache PRIVATE "-Wno-implicit-exception-spec-mismatch")
+
+
+
+  file(GLOB BOLT_CUDA_EXTENSION_SRC
+    ${BOLT_DIR}/cuda/extension/*.cu
+    ${BOLT_DIR}/cuda/extension/*.cc
+    ../third_party/HugeCTR/gpu_cache/src/nv_gpu_cache.cu
+    )
+  set_source_files_properties(${BOLT_CUDA_EXTENSION_SRC} PROPERTIES LANGUAGE HIP)
+  add_library(${LIB_GRAPHBOLT_ROCM_NAME} STATIC ${BOLT_CUDA_EXTENSION_SRC} ${BOLT_HEADERS})
+  target_link_libraries(${LIB_GRAPHBOLT_ROCM_NAME} PUBLIC "${TORCH_LIBRARIES}")
+  target_link_libraries(${LIB_GRAPHBOLT_ROCM_NAME} PUBLIC graphbolt_gpu_cache)
+
+  # TODO(#23): Enable for perf. Was producing failing code
+  # target_compile_definitions(${LIB_GRAPHBOLT_ROCM_NAME} PRIVATE LIBCUDACXX_VERSION)
+  set_target_properties(${LIB_GRAPHBOLT_ROCM_NAME} PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
+
+  include_directories(AFTER "../third_party/HugeCTR/gpu_cache/include")
+  include_directories(
+    $<TARGET_PROPERTY:cuco::cuco,INTERFACE_INCLUDE_DIRECTORIES>
+    $<TARGET_PROPERTY:hip::hipcub,INTERFACE_INCLUDE_DIRECTORIES>
+    )
+  target_link_libraries(${LIB_GRAPHBOLT_ROCM_NAME}  PRIVATE
+    cuco::cuco
+    hip::device
+    hip::host
+    hip::hipcub
+    roc::rocprim_hip
+    roc::rocthrust
+  )
+
+  target_link_libraries(${LIB_GRAPHBOLT_NAME} ${LIB_GRAPHBOLT_ROCM_NAME} graphbolt_gpu_cache)
+endif()
+
 
 # The Torch CMake configuration only sets up the path for the MKL library when
 # using the conda distribution. The following is a workaround to address this

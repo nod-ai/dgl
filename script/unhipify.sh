@@ -8,11 +8,11 @@ set -euo pipefail
 cd "${DGL_HOME}"
 
 function find_prehip() {
-    find $@ -name '*.prehip'
+    find $@ -name '*.prehip' | sort
 }
 
 declare -a prehip_srcs=(
-    $(find_prehip src include tests third_party/HugeCTR/gpu_cache tensoradapter)
+    $(find_prehip  src include tests third_party/HugeCTR/gpu_cache tensoradapter graphbolt)
 )
 
 for prehip_src in ${prehip_srcs[@]}; do

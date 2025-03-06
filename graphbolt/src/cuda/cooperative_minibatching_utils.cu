@@ -23,7 +23,14 @@
 #include <thrust/transform.h>
 
 #include <cub/cub.cuh>
+
+#ifdef GRAPHBOLT_USE_ROCM
+// libhipcxx does not provide proclaim_return_type, but hipCollections defines
+// it.
+#include <cuco/static_map.cuh>
+#else
 #include <cuda/functional>
+#endif
 
 #include "../utils.h"
 #include "./common.h"

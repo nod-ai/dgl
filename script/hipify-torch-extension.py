@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Hipifies the DGL tensoradapter plugin for PyTorch
+"""Hipifies the DGL plugins for PyTorch
 
 Instead of the generic HIPIFY tooling that we use for the rest of DGL, we use
 the PyTorch Hipify Python tooling. This is customized for some PyTorch-specific
@@ -13,21 +13,27 @@ Python), so we might consider using it for the rest of DGL as well rather than
 having two different tools here, but it requires some modification to do that.
 """
 
+import argparse
 import os
 import pathlib
 import shutil
 
 from torch.utils.hipify import hipify_python
 
-TENSOR_ADAPTER_DIR = pathlib.Path(os.environ["DGL_HOME"]) / "tensoradapter"
+parser = argparse.ArgumentParser(
+    prog="hipify-torch-extension",
+    description="Hipify all files underneath the given directory."
+)
+parser.add_argument('dir_path', type=pathlib.Path) 
+dir_path = parser.parse_args().dir_path
  
-for prehip_file in TENSOR_ADAPTER_DIR.rglob("*.prehip"):
+for prehip_file in dir_path.rglob("*.prehip"):
     orig_file = prehip_file.with_suffix("")
     shutil.copy2(prehip_file, orig_file)
 
 hipify_result = hipify_python.hipify(
-    project_directory=str(TENSOR_ADAPTER_DIR),
-    output_directory=str(TENSOR_ADAPTER_DIR),
+    project_directory=str(dir_path),
+    output_directory=str(dir_path),
     is_pytorch_extension=True,
 )
 
@@ -38,15 +44,3 @@ for orig_path, result in hipify_result.items():
     shutil.copy2(orig_path, prehip_path)
     hipified_path = result.hipified_path or orig_path
     os.rename(hipified_path, orig_path)
-    with open(orig_path) as f:
-        content = f.read()
-    # Do our own replacement. This is the only extra one we need.
-    updated_content = content.replace("DGL_USE_CUDA", "DGL_USE_ROCM")
-    if content == updated_content:
-        # If we didn't change the contents and neither did torch hipify, delete
-        # the .prehip file.
-        if "skipped" in result.status:
-            os.unlink(prehip_path)
-    else:
-        with open(orig_path, "w") as f:
-            f.write(updated_content)

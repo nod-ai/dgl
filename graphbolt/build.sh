@@ -1,10 +1,10 @@
 #!/bin/bash
 # Helper script to build graphbolt libraries for PyTorch
-set -e
-
-mkdir -p build
-mkdir -p $BINDIR/graphbolt
-cd build
+set -euo pipefail
+GRAPHBOLT_BINDIR="${BINDIR}/graphbolt"
+GRAPHBOLT_SRCDIR="${SRCDIR}/graphbolt"
+mkdir -p "${GRAPHBOLT_BINDIR}/build"
+cd "${GRAPHBOLT_BINDIR}/build"
 
 if [ $(uname) = 'Darwin' ]; then
   CPSOURCE=*.dylib
@@ -28,21 +28,39 @@ if ! [[ -z "${CUDAARCHS}" ]]; then
     TORCH_CUDA_ARCH_LIST=${LAST_ARCHITECTURE:0:-1}'.'${LAST_ARCHITECTURE: -1}
   fi
 fi
-CMAKE_FLAGS="-DCUDA_TOOLKIT_ROOT_DIR=$CUDA_TOOLKIT_ROOT_DIR -DUSE_CUDA=$USE_CUDA -DTORCH_CUDA_ARCH_LIST=$TORCH_CUDA_ARCH_LIST"
-echo "graphbolt cmake flags: $CMAKE_FLAGS"
+    
+export ROCM_PATH="${ROCM_PATH}"
+declare -a CMAKE_FLAGS=(
+  "-G${GENERATOR}"
+  "-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}"
+  "-DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}" 
+  "-DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}" 
+  "-DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}" 
+  "-DCMAKE_HIP_ARCHITECTURES=${CMAKE_HIP_ARCHITECTURES}" 
+  "-DCUDA_TOOLKIT_ROOT_DIR=${CUDA_TOOLKIT_ROOT_DIR}" 
+  "-DROCM_ROOT=${ROCM_PATH}" 
+  "-DTORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH_LIST}" 
+  "-DUSE_ROCM=${USE_ROCM}" 
+  "-DUSE_CUDA=${USE_CUDA}" 
+)
+
+export PATH="${PATH}:${ROCM_PATH}/lib/llvm/bin/"
+echo "graphbolt cmake flags: ${CMAKE_FLAGS}"
 
 if [ $# -eq 0 ]; then
-  $CMAKE_COMMAND $CMAKE_FLAGS ..
-  make -j
-  cp -v $CPSOURCE $BINDIR/graphbolt
+  "${CMAKE_COMMAND}" "${CMAKE_FLAGS[@]}" "${GRAPHBOLT_SRCDIR}"
+  cmake --build .
+  # CPSOURCE deliberately unquoted to expand wildcard
+  cp -v $CPSOURCE "${GRAPHBOLT_BINDIR}"
 else
   for PYTHON_INTERP in $@; do
-    TORCH_VER=$($PYTHON_INTERP -c 'import torch; print(torch.__version__.split("+")[0])')
-    mkdir -p $TORCH_VER
-    cd $TORCH_VER
-    $CMAKE_COMMAND $CMAKE_FLAGS -DPYTHON_INTERP=$PYTHON_INTERP ../..
-    make -j
-    cp -v $CPSOURCE $BINDIR/graphbolt
+    TORCH_VER="$("${PYTHON_INTERP}" -c 'import torch; print(torch.__version__.split("+")[0])')"
+    mkdir -p "${TORCH_VER}"
+    cd "${TORCH_VER}"
+    "${CMAKE_COMMAND}" "${CMAKE_FLAGS[@]}" -DPYTHON_INTERP="${PYTHON_INTERP}" "${GRAPHBOLT_SRCDIR}" 
+    cmake --build .
+    # CPSOURCE deliberately unquoted to expand wildcard
+    cp -v $CPSOURCE "${GRAPHBOLT_BINDIR}"
     cd ..
   done
 fi
