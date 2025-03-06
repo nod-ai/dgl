@@ -454,7 +454,10 @@ if(BUILD_TORCH)
     file(TO_NATIVE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/tensoradapter/pytorch/build.sh BUILD_SCRIPT)
     add_custom_target(
       tensoradapter_pytorch
-      ${CMAKE_COMMAND} -E env ROCM_PATH=${ROCM_PATH} CC=${CC} CXX=${CXX}
+      ${CMAKE_COMMAND} -E env
+      ROCM_PATH=${ROCM_PATH}
+      CC=${CC}
+      CXX=${CXX}
       CMAKE_COMMAND=${CMAKE_CMD}
       GENERATOR=${CMAKE_GENERATOR}
       CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}
