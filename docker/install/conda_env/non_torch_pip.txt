@@ -1,7 +1,7 @@
 --find-links https://download.pytorch.org/whl/torch_stable.html
 cython
 matplotlib
-networkx
+networkx==3.4.2 # need networkx.random_labeled_tree
 nltk
 nose
 # Require a specific version of the next two to avoid silent pip failures.
