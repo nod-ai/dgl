@@ -1,0 +1,6 @@
+name: pytorch-rocm
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+    - --requirement torch_rocm_pip.txt
