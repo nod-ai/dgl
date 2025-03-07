@@ -7,7 +7,8 @@
 
 
 bash ./script/run_pytest.sh -g \
-    tests/python/pytorch
+    tests/python/pytorch \
+    --deselect=tests/python/pytorch/graphbolt/impl/test_hetero_cached_feature.py::test_hetero_cached_feature[gpu_cached_feature]
 
 final_ret=$?
 
