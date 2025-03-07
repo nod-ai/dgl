@@ -4,7 +4,7 @@ import torch as th
 
 
 def cuda():
-    return th.device("cuda:0")
+    return th.device(th.cuda.current_device())
 
 
 def is_cuda_available():

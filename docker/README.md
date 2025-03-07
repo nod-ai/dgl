@@ -5,9 +5,14 @@
 docker build -t dgl-cpu -f Dockerfile.ci_cpu .
 ```
 
-### GPU image
+### Nvidia image
 ```bash
 docker build -t dgl-gpu -f Dockerfile.ci_gpu .
+```
+
+### Rocm image
+```bash
+docker build -t dgl-rocm -f Dockerfile.rocm .
 ```
 
 ### Lint image

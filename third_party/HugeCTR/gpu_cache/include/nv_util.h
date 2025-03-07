@@ -15,6 +15,10 @@
  */
 #pragma once
 
+#ifdef DGL_USE_ROCM
+#include <hip/hip_runtime.h>
+#endif
+
 #include <hip/hip_fp16.h>
 #include <hip/hip_fp8.h>
 #include <hip/hip_runtime_api.h>

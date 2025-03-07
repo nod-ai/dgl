@@ -1,3 +1,133 @@
+# DGL Port to AMD
+
+This is a port of DGL to work on AMD GPUs using
+[HIP](https://rocm.docs.amd.com/projects/HIP). It includes some manual
+modifications to the DGL CUDA source and a script to run
+[hipify](https://rocm.docs.amd.com/projects/HIPIFY) to convert those sources
+into versions that work with HIP. It also adds a `USE_ROCM` option to the CMake
+build that enables ROCM support.
+
+The [hip-ready](https://github.com/nod-ai/dgl/tree/hip-ready) branch contains
+these modifications. The
+[hipify-inplace](https://github.com/nod-ai/dgl/tree/hipify-inplace) branch
+contains the result of running the hipification script on the corresponding
+`hip-ready` commit. It is provided for convenience.
+
+## Known Issues
+
+We use GitHub issues for tracking. The port primarily targets CDNA2 and CDNA3
+architectures and has been tested on those. Please report problems running on
+other architectures.
+
+## ROCm version
+
+The port depends on ROCm features and bug fixes that are not yet available in
+any official release. A [Dockerfile](docker/Dockerfile.rocm) is included that
+makes the necessary modifications. You can either build the Docker image or use
+the Dockerfile as a reference for the modifications to make to your own system.
+
+Here are some example docker commands. Refer to the official
+[Docker](https://docs.docker.com/) and
+[Docker for ROCm](https://rocm.docs.amd.com/projects/install-on-linux/en/latest/how-to/docker.html)
+documentation for details.
+
+```shell
+docker build -t dgl-rocm -f docker/Dockerfile.rocm docker/
+docker run \
+  --env DGL_HOME=/dgl \
+  -it \
+  --network=host \
+  --device=/dev/kfd \
+  --device=/dev/dri \
+  --ipc=host \
+  --shm-size 16G \
+  --group-add video \
+  --cap-add=SYS_PTRACE \
+  --security-opt seccomp=unconfined \
+  --mount type=bind,src=$PWD,dst=/dgl \
+  --workdir=/dgl \
+  dgl-rocm
+```
+
+## Hipify
+
+To convert the sources to work with HIP, run `script/hipify-inplace.sh`. You can
+also check out the `hipify-inplace` branch, which just contains the sources with
+these modifications already performed. To undo hipification, you can run
+`script/unhipify.sh`.
+
+## Build
+
+Use the `USE_ROCM` CMake option to turn on ROCm support. The build requires
+clang-19 to incorporate a
+[clang bug fix](https://github.com/llvm/llvm-project/pull/93976). It also
+requires position independent code to be turned on. Here is an example CMake
+build command that should work inside the Docker container. Modify it as needed
+if running directly on your own system. Not all of these options are strictly
+required. Refer to the [CMake documentation](https://cmake.org/documentation/)
+to learn what they do.
+
+```shell
+cmake \
+  -DUSE_ROCM=ON \
+  -DCMAKE_PREFIX_PATH=/opt/rocm \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DBUILD_TYPE=dev \
+  -DBUILD_CPP_TEST=ON \
+  -DBUILD_GRAPHBOLT=ON \
+  -DBUILD_SPARSE=ON \
+  -DUSE_LIBXSMM=OFF \
+  -DUSE_OPENMP=ON \
+  -DPython3_FIND_STRATEGY=LOCATION \
+  -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+  -DROCM_WARN_TOOLCHAIN_VAR=OFF \
+  -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+  -DCMAKE_HIP_FLAGS="-Wno-deprecated -Wno-pass-failed -Werror" \
+  -DCMAKE_C_FLAGS="-Wno-deprecated -Wno-unneeded-internal-declaration -Wno-vla-cxx-extension -Werror" \
+  -DCMAKE_CXX_FLAGS="-Wno-deprecated -Wno-unneeded-internal-declaration -Wno-vla-cxx-extension -Werror" \
+  -DCMAKE_C_COMPILER=/usr/bin/clang-19 \
+  -DCMAKE_CXX_COMPILER=/usr/bin/clang++-19 \
+  -DCMAKE_INSTALL_PREFIX=/home/gcmn/src/dgl/out/install/rocm-docker \
+  -S . \
+  -B out/build/rocm-docker \
+  -G Ninja
+```
+
+Note that we've made a few modifications to the way the DGL build is structured,
+so that its sub-builds for the graphbolt, tensoradapter, and sparse components
+all take place in the same build directory. This enables builds with different
+configurations to co-exist.
+
+## Test
+
+On the platforms we've tested (MI210 and MI300X) all C++ unit tests pass and all
+but one Python unit tests pass for the PyTorch backend (other backends have not
+been ported). See [script/run_rocm_pytests.sh](script/run_rocm_pytests.sh) for
+the tests that are expected to pass.
+
+To run the C++ tests, execute the `runUnitTests` binary at the root of your
+build directory, e.g.
+
+```shell
+out/build/rocm-docker/runUnitTests
+```
+
+The DGL Python unit tests assume that your build directory is at the source root and
+called `build/`. You can either symlink your build directory there or just build there in the first place
+
+```shell
+ln -s out/build/rocm-docker build
+```
+
+We've created a wrapper script to run all the GPU and CPU Python tests that are
+expected to pass:
+
+```shell
+script/run_rocm_pytests.sh
+```
+
+# DGL Main Documentation
+
 <p align="center">
   <img src="http://data.dgl.ai/asset/logo.jpg" height="200">
 </p>
@@ -9,7 +139,7 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
 [![Twitter](https://img.shields.io/twitter/follow/DGLGraph?style=social)](https://twitter.com/GraphDeep)
 
-[Website](https://www.dgl.ai) | [A Blitz Introduction to DGL](https://docs.dgl.ai/tutorials/blitz/index.html) | Documentation ([Latest](https://docs.dgl.ai/en/latest/) | [Stable](https://docs.dgl.ai)) | [Official Examples](examples/README.md) | [Discussion Forum](https://discuss.dgl.ai) | [Slack Channel](https://join.slack.com/t/deep-graph-library/shared_invite/zt-eb4ict1g-xcg3PhZAFAB8p6dtKuP6xQ)
+[Website](https://www.dgl.ai) | [A Blitz Introduction to DGL](https://docs.dgl.ai/tutorials/blitz/index.html) | Documentation ([Latest](https://www.dgl.ai/dgl_docs/) | [Official Examples](examples/README.md) | [Discussion Forum](https://discuss.dgl.ai) | [Slack Channel](https://join.slack.com/t/deep-graph-library/shared_invite/zt-eb4ict1g-xcg3PhZAFAB8p6dtKuP6xQ)
 
 DGL is an easy-to-use, high performance and scalable Python package for deep learning on graphs. DGL is framework agnostic, meaning if a deep graph model is a component of an end-to-end application, the rest of the logics can be implemented in any major frameworks, such as PyTorch, Apache MXNet or TensorFlow.
 
