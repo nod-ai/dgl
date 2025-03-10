@@ -1,7 +1,6 @@
 #!/bin/bash
 
-# Reverses hipify.sh and hipify-tensoradapter.py by copying prehip files back to
-# their original locations.
+# Reverses hipify.sh, copying prehip files back to their original locations.
 
 set -euo pipefail
 
