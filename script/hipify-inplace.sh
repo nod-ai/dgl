@@ -56,7 +56,6 @@ for src in ${hipify_perl_srcs[@]}; do
     ( set -x ; hipify-perl -print-stats -inplace $src ) &> "${log_file}" &
 done
 
-sleep 1 # Hack to make it more likely the echo below prints after the last job command line from above.
 echo "Waiting for hipify jobs to complete"
 wait
 
