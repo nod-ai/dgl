@@ -68,4 +68,5 @@ COPY install/conda_env/torch_rocm_pip.txt /install/conda_env/torch_rocm_pip.txt
 RUN ["/bin/bash", "-i", "-c", "conda env create -f /install/conda_env/torch_rocm.yml"]
 RUN ["/bin/bash", "-i", "-c", "pip install --requirement /install/conda_env/non_torch_pip.txt"]
 
-
+# The ROCM backend is only tested for pytorch.
+ENV DGLBACKEND=pytorch
