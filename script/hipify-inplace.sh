@@ -13,7 +13,10 @@ set -euo pipefail
 
 cd "${DGL_HOME}"
 
-HIPIFY_LOG="/tmp/hipify-inplace.log"
+LOG_DIR="$(mktemp --tmpdir -d hipify-inplace-XXXX)"
+COMBINED_LOG="${LOG_DIR}/hipify-combined.log"
+
+echo "Writing logs to ${LOG_DIR}"
 
 function find_code() {
     find $@ -type f -name '*.cu' -o -name '*.CU'
@@ -35,32 +38,35 @@ declare -a all_srcs=(
     ${hipify_perl_srcs[@]} $(find_code tensoradapter graphbolt)
 )
 
+echo "Starting hipify jobs"
 declare -a log_files=()
 
-log_file="$(mktemp --tmpdir hipify_tensoradapter.XXX.log)"
+log_file="$(mktemp --tmpdir="${LOG_DIR}" hipify_tensoradapter.XXX.log)"
 log_files+=("${log_file}")
-( set -x ; script/hipify-torch-extension.py ${DGL_HOME}/tensoradapter/ &> "${log_file}" ) &
+( set -x ; script/hipify-torch-extension.py ${DGL_HOME}/tensoradapter/ ) &> "${log_file}" &
 
-log_file="$(mktemp --tmpdir hipify_graphbolt.XXX.log)"
+log_file="$(mktemp --tmpdir="${LOG_DIR}" hipify_graphbolt.XXX.log)"
 log_files+=("${log_file}")
-( set -x ; script/hipify-torch-extension.py ${DGL_HOME}/graphbolt/ &> "${log_file}" ) &
+( set -x ; script/hipify-torch-extension.py ${DGL_HOME}/graphbolt/ ) &> "${log_file}" &
 
 
 for src in ${hipify_perl_srcs[@]}; do
-    log_file="$(mktemp --tmpdir hipify_${src//\//_}.XXX.log)"
+    log_file="$(mktemp --tmpdir="${LOG_DIR}" hipify_${src//\//_}.XXX.log)"
     log_files+=("${log_file}")
-    ( set -x ; hipify-perl -print-stats -inplace $src &> "${log_file}" ) &
+    ( set -x ; hipify-perl -print-stats -inplace $src ) &> "${log_file}" &
 done
 
-sleep 1 # Hack to make it more likely the echo below prints after the last job command line from above.
 echo "Waiting for hipify jobs to complete"
 wait
 
-cat "${log_files[@]}" > "${HIPIFY_LOG}" && rm "${log_files[@]}"
-echo "Logs written to ${HIPIFY_LOG}"
+# Using tail will print a separator between each file's contents.
+tail -n +1 "${log_files[@]}" > "${COMBINED_LOG}"
+echo "" >> "${COMBINED_LOG}"
+echo "Combined logs written to ${COMBINED_LOG}"
 
 # Additional fixes for project-specific things and things hipify misses or gets
 # wrong.
+echo "Running additional sed replacements"
 for src in ${all_srcs[@]}; do
     sed -i -f - $src <<-EOF
         s@#include <hipblas.h>@#include <hipblas/hipblas.h>@
@@ -95,7 +101,7 @@ EOF
 
     # If no changes were made, delete the prehip file.
     if cmp -s "${src}" "${src}.prehip"; then
-        echo "Deleting unchanged ${src}.prehip"
+        echo "Deleting unchanged ${src}.prehip" >> "${COMBINED_LOG}"
         rm "${src}.prehip"
     fi
 done
