@@ -35,7 +35,7 @@
 // TODO: is there a better way to do this?
 struct __hip_bfloat16;
 #else
-#include <hip/hip_bf16.h>
+#include <cuda_bf16.h>
 #endif  // defined(DGL_USE_ROCM) && !defined(__HIPCC__)
 #endif  // BF16_ENABLED
 #endif  // DGL_USE_CUDA
