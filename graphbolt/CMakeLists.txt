@@ -196,8 +196,7 @@ if(USE_ROCM)
   add_library(${LIB_GRAPHBOLT_ROCM_NAME} STATIC ${BOLT_CUDA_EXTENSION_SRC} ${BOLT_HEADERS})
   target_link_libraries(${LIB_GRAPHBOLT_ROCM_NAME} PUBLIC "${TORCH_LIBRARIES}")
 
-  # TODO(#23): Enable for perf. Was producing failing code
-  # target_compile_definitions(${LIB_GRAPHBOLT_ROCM_NAME} PRIVATE LIBCUDACXX_VERSION)
+  add_compile_definitions(LIBCUDACXX_VERSION)
   set_target_properties(${LIB_GRAPHBOLT_ROCM_NAME} PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
 
   include_directories(AFTER "../third_party/HugeCTR/gpu_cache/include")
