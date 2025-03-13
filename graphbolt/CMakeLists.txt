@@ -187,16 +187,6 @@ if(USE_CUDA)
 endif()
 
 if(USE_ROCM)
-  file(GLOB graphbolt_gpu_cache_src
-    ../third_party/HugeCTR/gpu_cache/src/nv_gpu_cache.cu
-    )
-  set_source_files_properties(${graphbolt_gpu_cache_src} PROPERTIES LANGUAGE HIP)
-  add_library(graphbolt_gpu_cache STATIC ${graphbolt_gpu_cache_src})
-  target_include_directories(graphbolt_gpu_cache PRIVATE "../third_party/HugeCTR/gpu_cache/include")
-  target_compile_options(graphbolt_gpu_cache PRIVATE "-Wno-implicit-exception-spec-mismatch")
-
-
-
   file(GLOB BOLT_CUDA_EXTENSION_SRC
     ${BOLT_DIR}/cuda/extension/*.cu
     ${BOLT_DIR}/cuda/extension/*.cc
@@ -205,7 +195,6 @@ if(USE_ROCM)
   set_source_files_properties(${BOLT_CUDA_EXTENSION_SRC} PROPERTIES LANGUAGE HIP)
   add_library(${LIB_GRAPHBOLT_ROCM_NAME} STATIC ${BOLT_CUDA_EXTENSION_SRC} ${BOLT_HEADERS})
   target_link_libraries(${LIB_GRAPHBOLT_ROCM_NAME} PUBLIC "${TORCH_LIBRARIES}")
-  target_link_libraries(${LIB_GRAPHBOLT_ROCM_NAME} PUBLIC graphbolt_gpu_cache)
 
   # TODO(#23): Enable for perf. Was producing failing code
   # target_compile_definitions(${LIB_GRAPHBOLT_ROCM_NAME} PRIVATE LIBCUDACXX_VERSION)
@@ -225,7 +214,7 @@ if(USE_ROCM)
     roc::rocthrust
   )
 
-  target_link_libraries(${LIB_GRAPHBOLT_NAME} ${LIB_GRAPHBOLT_ROCM_NAME} graphbolt_gpu_cache)
+  target_link_libraries(${LIB_GRAPHBOLT_NAME} ${LIB_GRAPHBOLT_ROCM_NAME})
 endif()
 
 
