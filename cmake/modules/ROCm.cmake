@@ -24,6 +24,8 @@ macro(dgl_config_rocm linker_libs)
   add_definitions(-DDGL_USE_ROCM)
   # We need the newest stuff that isn't turned on by default yet
   add_definitions(-DHIP_ENABLE_WARP_SYNC_BUILTINS)
+  # Used by third_party/HugeCTR/gpu_cache
+  add_compile_definitions(LIBCUDACXX_VERSION)
 
   list(APPEND ${linker_libs} 
     hip::host
