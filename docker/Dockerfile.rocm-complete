@@ -1,0 +1,40 @@
+# Docker container for running DGL on AMD GPUs with ROCM, including DGL itself.
+
+# TODO: Fetching and rebuilding DGL is slow. Consider multistage builds.
+
+ARG BASE_IMAGE=gcmn/dgl:rocm-deps-only
+FROM ${BASE_IMAGE}
+
+ENV DGL_HOME=/dgl
+ENV DGLBACKEND=pytorch
+ARG DGL_COMMIT=034a9ee5b536d3211023d542083c831aaf9a0391
+WORKDIR "${DGL_HOME}"
+RUN git init . \
+    && git remote add origin https://github.com/nod-ai/dgl \
+    && git fetch origin "${DGL_COMMIT}" \
+    && git checkout FETCH_HEAD \
+    && git submodule update --depth 1 --init -j 8 \
+    && cmake \
+        -DUSE_ROCM=ON \
+        -DCMAKE_HIP_FLAGS="-Wno-deprecated -Wno-pass-failed -Werror" \
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+        -DROCM_WARN_TOOLCHAIN_VAR=OFF \
+        -DCMAKE_C_FLAGS="-Wno-deprecated -Wno-unneeded-internal-declaration -Wno-vla-cxx-extension -Werror" \
+        -DCMAKE_CXX_FLAGS="-Wno-deprecated -Wno-unneeded-internal-declaration -Wno-vla-cxx-extension -Werror" \
+        -DCMAKE_INSTALL_PREFIX=build/install \
+        -DCMAKE_C_COMPILER=/usr/bin/clang-19 \
+        -DCMAKE_CXX_COMPILER=/usr/bin/clang++-19 \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_TYPE=release \
+        -DBUILD_CPP_TEST=ON \
+        -DBUILD_GRAPHBOLT=ON \
+        -DBUILD_SPARSE=ON \
+        -DUSE_LIBXSMM=OFF \
+        -DUSE_OPENMP=ON \
+        -B build \
+        -G Ninja \
+    && cmake --build build \
+    && cd python \
+    && python setup.py install \
+    && python setup.py build_ext --inplace \
+    && cd ..

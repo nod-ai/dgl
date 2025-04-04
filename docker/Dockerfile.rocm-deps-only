@@ -1,20 +1,21 @@
-# Docker container for running DGL on AMD GPUs with ROCM
+# Docker container for running DGL on AMD GPUs with ROCM. Includes only the
+# dependencies of DGL, not DGL itself.
+
+# TODO: This image is quite large. Consider multistage builds.
+# See also https://github.com/ROCm/ROCm-docker/issues/120
 FROM rocm/pytorch:rocm6.3.3_ubuntu22.04_py3.10_pytorch_release_2.4.0
 
-ENV TZ=US
-RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
-
-COPY install/ubuntu_install_core.sh /install/ubuntu_install_core.sh
-RUN bash /install/ubuntu_install_core.sh
-
-COPY install/ubuntu_install_build.sh /install/ubuntu_install_build.sh
-RUN bash /install/ubuntu_install_build.sh
-
-# python
-COPY install/ubuntu_install_conda.sh /install/ubuntu_install_conda.sh
-RUN bash /install/ubuntu_install_conda.sh
-
-ENV CONDA_ALWAYS_YES="true"
+# Create a venv that is active for all subsequent RUN commands and when the
+# image is run as a container. See
+# https://pythonspeed.com/articles/activate-virtualenv-dockerfile/
+WORKDIR /
+ENV VIRTUAL_ENV=/.venv
+# We use system-site-packages so that we get PyTorch from the base image.
+# Otherwise it's tricky to get a compatible PyTorch version as Torch 2.6 changes
+# the default for torch.load weights_only and ROCm 6.3 is in the nightlies,
+# which doesn't have torch<2.6.
+RUN python3 -m venv --system-site-packages $VIRTUAL_ENV
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 # Clang for compiling DGL
 # We need https://github.com/llvm/llvm-project/pull/93976
@@ -30,23 +31,21 @@ ENV CC=/usr/bin/clang-19
 ENV CXX=/usr/bin/clang++-19
 
 # Gather additional or updated ROCm libraries
-ARG GPU_TARGETS="gfx90a;gfx940;gfx942"
 WORKDIR /git
 RUN (git clone https://github.com/tpopp/hipCUB.git && cd hipCUB && git checkout f342111197dd020f1c4210b16aa550b08992e97b \
       && mkdir build && cd build \
-      && cmake -DCMAKE_HIP_ARCHITECTURES="${GPU_TARGETS}" -DCMAKE_INSTALL_PREFIX=/opt/rocm .. && make install) \
+      && cmake -DCMAKE_INSTALL_PREFIX=/opt/rocm .. && make install) \
     && (git clone https://github.com/ROCm/libhipcxx.git && cd libhipcxx && git checkout v2.2.0 \
       && mkdir build && cd build \
-      && cmake -DCMAKE_HIP_ARCHITECTURES="${GPU_TARGETS}" -DCMAKE_INSTALL_PREFIX=/opt/rocm .. && make install ) \
+      && cmake -DCMAKE_INSTALL_PREFIX=/opt/rocm .. && make install ) \
     && (git clone https://github.com/tpopp/hipCollections.git && cd hipCollections && git checkout 6e31da8fd309f229d28adde8583a30bb4efaf1b7 \
       && mkdir build && cd build \
       && cmake -DCMAKE_INSTALL_PREFIX=/opt/rocm -DINSTALL_CUCO=ON -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_HIP_ARCHITECTURES="${GPU_TARGETS}" .. \
       && make install ) \
     && (git clone https://github.com/tpopp/rocThrust.git && cd rocThrust && git checkout 613db9a025709fb18f2a676543a17850bd231b04 \
       && mkdir build && cd build \
-      && cmake -DCMAKE_INSTALL_PREFIX=/opt/rocm -DCMAKE_HIP_ARCHITECTURES="${GPU_TARGETS}" .. && make install ) \
+      && cmake -DCMAKE_INSTALL_PREFIX=/opt/rocm .. && make install ) \
     && rm -rf /git
-
 
 # Patch ROCM headers with a couple of rocPrim fixes/additions needed by various consumers.
 # ROCm is for DeviceCopy.
@@ -61,12 +60,33 @@ RUN apt-get update \
     && filterdiff /patch-rocm/4dde14b4a4fa7d32123ff01034f608afa5b38c8b.patch --strip-match=2 --strip=2 -i 'include/*' | patch -p0 \
     && rm -rf /patch-rocm
 
-COPY install/conda_env/torch_rocm.yml /install/conda_env/torch_rocm.yml
-COPY install/conda_env/non_torch_pip.txt /install/conda_env/non_torch_pip.txt
-COPY install/conda_env/torch_rocm_pip.txt /install/conda_env/torch_rocm_pip.txt
-# Run pip install in 2 steps to deal with dependency management failures.
-RUN ["/bin/bash", "-i", "-c", "conda env create -f /install/conda_env/torch_rocm.yml"]
-RUN ["/bin/bash", "-i", "-c", "pip install --requirement /install/conda_env/non_torch_pip.txt"]
 
-# The ROCM backend is only tested for pytorch.
+WORKDIR /pip
+RUN pip install --find-links https://download.pytorch.org/whl/torch_stable.html torcheval torchmetrics torch_geometric \
+    && pip install \ 
+        cython \
+        matplotlib \
+        # need networkx.random_labeled_tree
+        networkx==3.4.2 \
+        nltk \
+        nose \
+        # Require a specific version of the next two to avoid silent pip failures.
+        numba>=0.61 \
+        numpy==1.26 \
+        ogb \
+        pandas \
+        psutil \
+        pydantic \
+        pytest \
+        pyyaml \
+        rdflib \
+        requests[security]==2.28 \
+        scikit-learn \
+        scipy \
+        tqdm \
+    && rm -rf /pip
+
+# # The ROCM backend is only tested for pytorch.
 ENV DGLBACKEND=pytorch
+
+WORKDIR /
