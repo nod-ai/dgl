@@ -1,41 +1,99 @@
-.git/
+# We ignore things to reduce the size of the context, but also to minimize cache
+# invalidations. This isn't comprehensive but knocks out a good chunk of
+# potential invalidations and big files.
 
-# The rest is a copy of the .gitignore file
+# Ignores specific to ROCm
+
+# Submodules we don't use
+third_party/cccl/
+third_party/libxsmm/
+
+
+# We just need the work tree, not the whole git history
+**/*.git/
+
+# These top-level directories don't affect the build
+.github/
+apps/
+benchmarks/
+conda/
+dglgo/
+docs/
+examples/
+notebooks/
+# We don't exclude tests/ because it's not super big and it's nice to be able to
+# run tests in the built image
+tools/
+tutorials/
+
+# These third_party/ directories dont' affect the build
+**/.github/
+**/docs/
+**/examples/
+**/doxygen/
+third_party/taskflow/image/
+third_party/taskflow/tfprof/
+third_party/taskflow/benchmarks/
+
+# These file types don't affect the build
+**/Jenkinsfile
+**/*.md
+**/.gitignore
+**/readthedocs.yml
+**/*.pdf
+**/*.prehip
+
+# Changing the dockerignore might change the context itself, but no-op changes
+# to it shouldn't invalidate the cache.
+**/.dockerignore
+
+# As long as the docker images are linux-only, we can ignore windows files
+**/*.bat
+
+# The affect of the Dockerfile itself on the cache is already captured. Don't
+# let changes to the file invalidate the whole copy cache.
+**/Dockerfile.*
+
+
+# The rest is a copy of the .gitignore file except that .dockignore has annoying
+# syntax differences with .gitignore: Bare filenames are always taken relative #
+# to the .dockerignore file, not applied everywhere. So if you want to ignore
+# files by extension, you have to do # **/*.md instead of just *.md
 
 # IDE
 .idea
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
-*.py[cod]
-*$py.class
+**/*.py[cod]
+**/*$py.class
 
 # C extensions
-*.so
+**/*.so
 
 # Distribution / packaging
 .Python
-build
-build-*/
-out/
-CMakeUserPresets.json
-dataset/
-datasets/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
+**/build
+**/build-*/
+**/out/
+**/CMakeUserPresets.json
+**/dataset/
+**/datasets/
+**/develop-eggs/
+**/dist/
+**/downloads/
+**/eggs/
+**/.eggs/
+**/lib/
+**/lib64/
+**/parts/
+**/sdist/
+**/var/
+**/wheels/
+**/*.egg-info/
+**/*.installed.cfg
+**/*.egg
+**/MANIFEST
 
 # Whitelist some distribution / package non-related directories
 !tests/dist
@@ -43,40 +101,44 @@ MANIFEST
 # PyInstaller
 #  Usually these files are written by a python script from a template
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-*.spec
+**/*.manifest
+**/*.spec
+
+# For the dockerignore, which applies third_party/ also, we need the
+# liburing.spec file
+!**/third_party/liburing/**/*.spec
 
 # Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
+**/pip-log.txt
+**/pip-delete-this-directory.txt
 
 # Unit test / coverage reports
 htmlcov/
-.tox/
-.coverage
-.coverage.*
-.cache
+**/*.tox/
+**/*.coverage
+**/*.coverage.*
+**/*.cache
 nosetests.xml
 coverage.xml
-*.cover
-.hypothesis/
-.pytest_cache/
+**/*.cover
+**/*.hypothesis/
+**/*.pytest_cache/
 
 # Translations
-*.mo
-*.pot
+**/*.mo
+**/*.pot
 
 # Django stuff:
-*.log
-local_settings.py
-db.sqlite3
+**/*.log
+**/local_settings.py
+**/db.sqlite3
 
 # Flask stuff:
 instance/
-.webassets-cache
+**/*.webassets-cache
 
 # Scrapy stuff:
-.scrapy
+**/*.scrapy
 
 # Sphinx documentation
 docs/_build/
@@ -85,16 +147,16 @@ docs/_build/
 target/
 
 # Jupyter Notebook
-.ipynb_checkpoints
+**/*.ipynb_checkpoints
 
 # pyenv
-.python-version
+**/*.python-version
 
 # celery beat schedule file
-celerybeat-schedule
+**/celerybeat-schedule
 
 # SageMath parsed files
-*.sage.py
+**/*.sage.py
 
 # Environments
 .env
@@ -118,34 +180,9 @@ venv.bak/
 # mypy
 .mypy_cache/
 
-examples/pytorch/data/ind.pubmed.y
-examples/pytorch/data/ind.pubmed.x
-examples/pytorch/data/ind.pubmed.ty
-examples/pytorch/data/ind.pubmed.tx
-examples/pytorch/data/ind.pubmed.test.index
-examples/pytorch/data/ind.pubmed.graph
-examples/pytorch/data/ind.pubmed.ally
-examples/pytorch/data/ind.pubmed.allx
-examples/pytorch/data/ind.cora.y
-examples/pytorch/data/ind.cora.x
-examples/pytorch/data/ind.cora.ty
-examples/pytorch/data/ind.cora.tx
-examples/pytorch/data/ind.cora.test.index
-examples/pytorch/data/ind.cora.graph
-examples/pytorch/data/ind.cora.ally
-examples/pytorch/data/ind.cora.allx
-examples/pytorch/data/ind.citeseer.y
-examples/pytorch/data/ind.citeseer.x
-examples/pytorch/data/ind.citeseer.ty
-examples/pytorch/data/ind.citeseer.tx
-examples/pytorch/data/ind.citeseer.test.index
-examples/pytorch/data/ind.citeseer.graph
-examples/pytorch/data/ind.citeseer.ally
-examples/pytorch/data/ind.citeseer.allx
-examples/pytorch/.DS_Store
-examples/.DS_Store
-examples/pytorch/generative_graph/*.p
-.DS_Store
+# The specific examples/ file deleted from the dockerignore because the whole
+# directory is already excluded
+**/*.DS_Store
 
 # data directory
 _download
@@ -155,24 +192,24 @@ tags
 cscope.*
 
 # Vim
-*.swp
-*.swo
-*.un~
+**/*.swp
+**/*.swo
+**/*.un~
 *~
 
 # parameters
-*.params
+**/*.params
 
 # vscode
 .clangd
 .vscode
-*.code-workspace
+**/*.code-workspace
 
 # asv
-.asv
+**/*.asv
 
-.ycm_extra_conf.py
-**.png
+**/*.ycm_extra_conf.py
+**/*.png
 
 # model file
-*.pth
+**/*.pth
