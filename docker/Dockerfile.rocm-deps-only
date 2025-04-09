@@ -1,6 +1,6 @@
-# Docker container for running DGL on AMD GPUs with ROCM. Includes only the
-# dependencies of DGL on ROCm, including the necessary compiler tools, but does
-# not include DGL itself.
+# Docker container for building and running DGL on AMD GPUs with ROCM. Includes
+# only the dependencies of DGL on ROCm, including the necessary compiler tools,
+# but does not include DGL itself.
 
 # The image creation here diverges from the way the other DGL images are built
 # because it inherits from the pytorch/rocm image, which has already made some

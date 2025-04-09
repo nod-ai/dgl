@@ -5,13 +5,13 @@
 
 FROM gcmn/dgl:rocm-deps-only
 
-# By default, build for all the architectures that the rocm-deps-only base image
-# is built for (limited by hip collections). Building for multiple
+# By default, build for whatever architectures were used in the parent image,
+# falling back to those supported by hip collections. Building for multiple
 # archictectures dramatically slows down a subsequent DGL build, especially of
 # graphbolt, but if we want a single image that "just works" for users, then I
 # think this is what we have to do :-/
 
-ARG GPU_TARGETS="gfx908;gfx90a;gfx940;gfx941;gfx942"
+ARG GPU_TARGETS="${GPU_TARGETS:-gfx908;gfx90a;gfx940;gfx941;gfx942}"
 # ARG is only scoped to this build, so we also declare with ENV
 ENV GPU_TARGETS="${GPU_TARGETS}"
 ENV PYTORCH_ROCM_ARCH="${GPU_TARGETS}"
