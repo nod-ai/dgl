@@ -63,6 +63,22 @@ RUN wget https://apt.llvm.org/llvm.sh \
 ENV CC=/usr/bin/clang-19
 ENV CXX=/usr/bin/clang++-19
 
+
+# Installing ccache here enables us to use for compiling DGL later. The cache
+# can be persisted in either a `RUN` step or `docker run` via a bind mount
+# (https://docs.docker.com/engine/storage/bind-mounts/). The image already has
+# sccache installed, but it's an ancient version that appears to have no logging
+# capabilities and I was getting cache misses on extremely slow recompiles of
+# DGL. Even installing a newer version, I still had the cache misses and not
+# much indication of what was wrong. With ccache OTOH it took about 5 minutes to
+# debug (the pcg library uses the __TIME__ macro which always busts the cache)
+# and fix (CCACHE_SLOPPINESS=time_macros).
+WORKDIR /ccache
+RUN wget https://github.com/ccache/ccache/releases/download/v4.11.2/ccache-4.11.2-linux-x86_64.tar.xz \
+    && tar -xf ccache-4.11.2-linux-x86_64.tar.xz \
+    && mv ccache-4.11.2-linux-x86_64/ccache /opt/cache/bin/ \
+    && rm -rf /ccache
+
 # Patch ROCM headers with a couple of rocPrim fixes/additions needed by various consumers.
 # ROCm is for DeviceCopy.
 # StreamHPC is for select features.
@@ -87,7 +103,8 @@ RUN apt-get update \
 # https://rocm.docs.amd.com/en/latest/conceptual/cmake-packages.html
 
 ARG GPU_TARGETS="gfx908;gfx90a;gfx940;gfx941;gfx942"
-# ARG is only scoped to this build, so we also declare with ENV
+# ARG is only scoped to this build, so we also declare with ENV. We want users
+# of the image to know what these were set to.
 ENV GPU_TARGETS="${GPU_TARGETS}"
 ENV PYTORCH_ROCM_ARCH="${GPU_TARGETS}"
 ENV AMDGPU_TARGETS="${GPU_TARGETS}"
@@ -95,7 +112,12 @@ ENV CMAKE_HIP_ARCHITECTURES="${GPU_TARGETS}"
 
 # Gather additional or updated ROCm libraries
 WORKDIR /git
-RUN (git clone https://github.com/tpopp/hipCUB.git && cd hipCUB && git checkout f342111197dd020f1c4210b16aa550b08992e97b \
+RUN --mount=type=cache,target=/root/.cache/ccache \
+    export CCACHE_SLOPPINESS=time_macros \
+    export CMAKE_C_COMPILER_LAUNCHER=ccache \
+    export CMAKE_CXX_COMPILER_LAUNCHER=ccache \
+    export CMAKE_HIP_COMPILER_LAUNCHER=ccache \
+    && (git clone https://github.com/tpopp/hipCUB.git && cd hipCUB && git checkout f342111197dd020f1c4210b16aa550b08992e97b \
       && mkdir build && cd build \
       && cmake -DGPU_TARGETS="${GPU_TARGETS}" -DAMDGPU_TARGETS="${AMDGPU_TARGETS}" -DCMAKE_HIP_ARCHITECTURES="${CMAKE_HIP_ARCHITECTURES}" -DCMAKE_INSTALL_PREFIX=/opt/rocm .. \
       && make install) \
@@ -112,6 +134,8 @@ RUN (git clone https://github.com/tpopp/hipCUB.git && cd hipCUB && git checkout 
       && cmake -DGPU_TARGETS="${GPU_TARGETS}" -DAMDGPU_TARGETS="${AMDGPU_TARGETS}" -DCMAKE_HIP_ARCHITECTURES="${CMAKE_HIP_ARCHITECTURES}" -DCMAKE_INSTALL_PREFIX=/opt/rocm .. \
       && make install ) \
     && rm -rf /git
+
+WORKDIR /
 
 # The ROCM backend is only tested for pytorch.
 ENV DGLBACKEND=pytorch
