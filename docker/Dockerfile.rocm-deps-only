@@ -64,23 +64,6 @@ RUN --mount=type=cache,target=/root/.cache/pip \
         scipy \
         tqdm
 
-# Clang for compiling DGL
-# We need https://github.com/llvm/llvm-project/pull/93976
-# Apt caching brings this step down from ~75s to ~10s.
-ARG LLVM_INSTALL_WORKDIR=/root/install-llvm
-WORKDIR "${LLVM_INSTALL_WORKDIR}"
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    wget https://apt.llvm.org/llvm.sh \
-      && chmod +x llvm.sh \
-      && ./llvm.sh 19 \
-      && apt-get update \
-      && apt-get --no-install-recommends install -y libomp-19-dev \
-      && rm -rf "${LLVM_INSTALL_WORKDIR}"
-
-ENV CC=/usr/bin/clang-19
-ENV CXX=/usr/bin/clang++-19
-
 # Installing ccache here enables us to use it for compiling DGL (and other
 # things) later. The cache can be persisted in either a `RUN` step or `docker
 # run` via a bind mount (https://docs.docker.com/engine/storage/bind-mounts/).
@@ -94,6 +77,12 @@ RUN wget https://github.com/ccache/ccache/releases/download/v4.11.2/ccache-4.11.
     # The base image has already added /opt/cache/bin to the PATH.
     && mv ccache-4.11.2-linux-x86_64/ccache /opt/cache/bin/ \
     && rm -rf "${CCACHE_INSTALL_WORKDIR}"
+
+# We pick up the clang and clang++ that are bundled with ROCm. We need at least
+# version 19 for https://github.com/llvm/llvm-project/pull/93976 (which ROCm 6.4
+# ships with).
+ENV CC=/opt/rocm/llvm/bin/clang
+ENV CXX=/opt/rocm/llvm/bin/clang++
 
 # By default, build for all the architectures that are supported by
 # hipCollections, which is somewhat limited. See
