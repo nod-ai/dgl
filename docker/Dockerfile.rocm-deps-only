@@ -84,17 +84,23 @@ RUN wget https://github.com/ccache/ccache/releases/download/v4.11.2/ccache-4.11.
 ENV CC=/opt/rocm/llvm/bin/clang
 ENV CXX=/opt/rocm/llvm/bin/clang++
 
-# By default, build for all the architectures that are supported by
-# hipCollections, which is somewhat limited. See
-# https://github.com/rocm/hipCollections/blob/b1cd36f600/CMakeLists.txt#L82 This
-# is a subset of the architectures that the ROCm PyTorch image was built for.
+# By default, build for all the CDNA architectures. The limitations here are:
+# - the architectures the base image builds PyTorch for
+# - the architectures that hipCollections supports
+#   (https://github.com/rocm/hipCollections/blob/b1cd36f600/CMakeLists.txt#L82)
+# - architectures that are OK with us hardcoding the wave size to 64 (which
+#   seems to exclude at least gfx1100).
+# I'm not really clear on the status of gfx940 and gfx941. I think they're
+# somehow older versions of CDNA3, but I'm unsure when you would need to use
+# them now. The base image doesn't build PyTorch for them though, so I'm leaving
+# them off.
 # HIP has a bunch of different variables it might use to decide which
 # architectures to use and honestly I'm not exactly clear on when each is used.
 # Some of them not being set causes warnings that are maybe false alarms, but
 # maybe not. We just try to set all of them. See
 # https://rocm.docs.amd.com/en/latest/conceptual/cmake-packages.html
 
-ARG GPU_TARGETS="gfx908;gfx90a;gfx940;gfx941;gfx942"
+ARG GPU_TARGETS="gfx908;gfx90a;gfx942"
 # ARG is only scoped to this build, so we also declare with ENV. We want users
 # of the image to know what these were set to.
 ENV GPU_TARGETS="${GPU_TARGETS}"
