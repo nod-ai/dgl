@@ -12,7 +12,7 @@
 # from
 # https://github.com/pytorch/pytorch/blob/main/.ci/docker/ubuntu-rocm/Dockerfile
 # and then install PyTorch itself.
-FROM rocm/pytorch:rocm6.3.3_ubuntu22.04_py3.10_pytorch_release_2.4.0
+FROM rocm/pytorch:rocm6.4_ubuntu22.04_py3.10_pytorch_release_2.4.1
 
 # Clean up base image 
 
@@ -94,22 +94,6 @@ RUN wget https://github.com/ccache/ccache/releases/download/v4.11.2/ccache-4.11.
     # The base image has already added /opt/cache/bin to the PATH.
     && mv ccache-4.11.2-linux-x86_64/ccache /opt/cache/bin/ \
     && rm -rf "${CCACHE_INSTALL_WORKDIR}"
-
-# Patch ROCM headers with a couple of rocPRIM fixes/additions needed by various consumers.
-# - ROCm is for DeviceCopy.
-# - StreamHPC is for device select features.
-ARG PATCH_ROCM_WORKDIR=/root/patch-rocm
-WORKDIR "${PATCH_ROCM_WORKDIR}"
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update \
-    && apt-get install -y patchutils \
-    && wget https://patch-diff.githubusercontent.com/raw/ROCm/rocPRIM/pull/662.patch \
-    && wget https://github.com/StreamHPC/rocPRIM/commit/4dde14b4a4fa7d32123ff01034f608afa5b38c8b.patch \
-    && cd /opt/rocm/ \
-    && filterdiff "${PATCH_ROCM_WORKDIR}/662.patch" --strip-match=2 --strip=2 -i 'include/*' | patch -p0 \
-    && filterdiff "${PATCH_ROCM_WORKDIR}/4dde14b4a4fa7d32123ff01034f608afa5b38c8b.patch" --strip-match=2 --strip=2 -i 'include/*' | patch -p0 \
-    && rm -rf "${PATCH_ROCM_WORKDIR}"
 
 # By default, build for all the architectures that are supported by
 # hipCollections, which is somewhat limited. See
