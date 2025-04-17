@@ -1263,14 +1263,20 @@ gpu_cache<key_type, ref_counter_type, empty_key, set_associativity, warp_size, s
     printf("Error: Invalid value for set_associativity.\n");
     return;
   }
-  // Power of 2 between 1 and SLAB_SIZE
-  if ((warp_size & (warp_size-1)) != 0 || warp_size < 1 || warp_size > SLAB_SIZE) {
-    printf("Error: Invalid value for warp_size %d.\n", warp_size);
-    return;
-  }
 
   // Get the current CUDA dev
   CUDA_CHECK(hipGetDevice(&dev_));
+
+  int threads_per_warp = 0;
+  CUDA_CHECK(hipDeviceGetAttribute(
+      &threads_per_warp, hipDeviceAttributeWarpSize, dev_));
+
+  // Power of 2 between 1 and threads per warp
+  if ((warp_size & (warp_size - 1)) != 0 || warp_size < 1 ||
+      warp_size > threads_per_warp) {
+    printf("Error: Invalid value for warp_size %d.\n", warp_size);
+    return;
+  }
 
   // Calculate # of slot
   num_slot_ = capacity_in_set_ * set_associativity * warp_size;
@@ -1311,14 +1317,20 @@ gpu_cache<key_type, ref_counter_type, empty_key, set_associativity, warp_size, s
     printf("Error: Invalid value for set_associativity.\n");
     return;
   }
-  // Power of 2 between 1 and SLAB_SIZE
-  if ((warp_size & (warp_size-1)) != 0 || warp_size < 1 || warp_size > SLAB_SIZE) {
-    printf("Error: Invalid value for warp_size %d.\n", warp_size);
-    return;
-  }
 
   // Get the current CUDA dev
   CUDA_CHECK(hipGetDevice(&dev_));
+
+  int threads_per_warp = 0;
+  CUDA_CHECK(hipDeviceGetAttribute(
+      &threads_per_warp, hipDeviceAttributeWarpSize, dev_));
+
+  // Power of 2 between 1 and threads per warp
+  if ((warp_size & (warp_size - 1)) != 0 || warp_size < 1 ||
+      warp_size > threads_per_warp) {
+    printf("Error: Invalid value for warp_size %d.\n", warp_size);
+    return;
+  }
 
   // Calculate # of slot
   num_slot_ = capacity_in_set_ * set_associativity * warp_size;
@@ -1655,8 +1667,16 @@ void gpu_cache<key_type, ref_counter_type, empty_key, set_associativity, warp_si
 }
 #endif
 
-template class gpu_cache<unsigned int, uint64_t, std::numeric_limits<unsigned int>::max(),
-                         SET_ASSOCIATIVITY, SLAB_SIZE>;
-template class gpu_cache<long long, uint64_t, std::numeric_limits<long long>::max(),
-                         SET_ASSOCIATIVITY, SLAB_SIZE>;
+template class gpu_cache<
+    uint32_t, uint64_t, std::numeric_limits<uint32_t>::max(), SET_ASSOCIATIVITY,
+    32>;
+template class gpu_cache<
+    uint64_t, uint64_t, std::numeric_limits<uint64_t>::max(), SET_ASSOCIATIVITY,
+    32>;
+template class gpu_cache<
+    uint32_t, uint64_t, std::numeric_limits<uint32_t>::max(), SET_ASSOCIATIVITY,
+    64>;
+template class gpu_cache<
+    uint64_t, uint64_t, std::numeric_limits<uint64_t>::max(), SET_ASSOCIATIVITY,
+    64>;
 }  // namespace gpu_cache

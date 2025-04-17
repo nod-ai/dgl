@@ -582,8 +582,7 @@ CSRMatrix CSRSliceMatrix(
   IdArray mask = Full(0, csr.indices->shape[0], nbits, ctx);
   // A count for how many masked values per row.
   IdArray count = NewIdArray(csr.num_rows, ctx, nbits);
-  CUDA_CALL(
-      hipMemset(count.Ptr<IdType>(), 0, sizeof(IdType) * (csr.num_rows)));
+  CUDA_CALL(hipMemset(count.Ptr<IdType>(), 0, sizeof(IdType) * (csr.num_rows)));
 
   // Generate a NodeQueryHashmap buffer. The key of the hashmap is col.
   // For performance, the load factor of the hashmap is in (0.25, 0.5);
@@ -610,18 +609,40 @@ CSRMatrix CSRSliceMatrix(
 
   // Execute SegmentMaskColKernel
   const int64_t num_rows = csr.num_rows;
+
   // With a simple fine-tuning, TILE_SIZE=16 gives a good performance.
   constexpr int TILE_SIZE = 16;
-  constexpr int BLOCK_WARPS = CUDA_MAX_NUM_THREADS / DGL_WARP_SIZE;
   IdType nb =
       dgl::cuda::FindNumBlocks<'x'>((num_rows + TILE_SIZE - 1) / TILE_SIZE);
-  const dim3 nthrs(DGL_WARP_SIZE, BLOCK_WARPS);
   const dim3 nblks(nb);
-  CUDA_KERNEL_CALL(
-      (_SegmentMaskColKernel<IdType, DGL_WARP_SIZE, BLOCK_WARPS, TILE_SIZE>), nblks,
-      nthrs, 0, stream, indptr_data, indices_data, num_rows,
-      hashmap_buffer.Ptr<IdType>(), buffer_size, mask.Ptr<IdType>(),
-      count.Ptr<IdType>());
+  int warp_size = 0;
+  CUDA_CALL(hipDeviceGetAttribute(
+      &warp_size, hipDeviceAttributeWarpSize, ctx.device_id));
+
+  switch (warp_size) {
+    case 32: {
+      constexpr int WARP_SIZE = 32;
+      constexpr int BLOCK_WARPS = CUDA_MAX_NUM_THREADS / WARP_SIZE;
+      const dim3 nthrs(WARP_SIZE, BLOCK_WARPS);
+      CUDA_KERNEL_CALL(
+          (_SegmentMaskColKernel<IdType, WARP_SIZE, BLOCK_WARPS, TILE_SIZE>),
+          nblks, nthrs, 0, stream, indptr_data, indices_data, num_rows,
+          hashmap_buffer.Ptr<IdType>(), buffer_size, mask.Ptr<IdType>(),
+          count.Ptr<IdType>());
+    } break;
+    case 64: {
+      constexpr int WARP_SIZE = 64;
+      constexpr int BLOCK_WARPS = CUDA_MAX_NUM_THREADS / WARP_SIZE;
+      const dim3 nthrs(WARP_SIZE, BLOCK_WARPS);
+      CUDA_KERNEL_CALL(
+          (_SegmentMaskColKernel<IdType, WARP_SIZE, BLOCK_WARPS, TILE_SIZE>),
+          nblks, nthrs, 0, stream, indptr_data, indices_data, num_rows,
+          hashmap_buffer.Ptr<IdType>(), buffer_size, mask.Ptr<IdType>(),
+          count.Ptr<IdType>());
+    } break;
+    default:
+      LOG(FATAL) << "Expected warp size to be 32 or 64 but got " << warp_size;
+  }
 
   IdArray idx = AsNumBits(NonZero(mask), nbits);
   if (idx->shape[0] == 0)
