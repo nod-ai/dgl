@@ -37,20 +37,26 @@ namespace dgl {
 namespace runtime {
 namespace cuda {
 
-template <typename key_t>
 class GpuCache : public runtime::Object {
+ public:
+  virtual ~GpuCache() = default;
+  virtual std::tuple<NDArray, IdArray, IdArray> Query(IdArray keys) = 0;
+  virtual void Replace(IdArray keys, NDArray values) = 0;
+
+  static constexpr const char *_type_key = "cuda.GpuCache";
+  DGL_DECLARE_OBJECT_TYPE_INFO(GpuCache, Object);
+};
+
+template <typename key_t, int WARP_SIZE>
+class GpuCacheImpl : public GpuCache {
   constexpr static int set_associativity = 2;
-  constexpr static int bucket_size = DGL_WARP_SIZE * set_associativity;
+  constexpr static int bucket_size = WARP_SIZE * set_associativity;
   using gpu_cache_t = gpu_cache::gpu_cache<
       key_t, uint64_t, std::numeric_limits<key_t>::max(), set_associativity,
-      DGL_WARP_SIZE>;
+      WARP_SIZE>;
 
  public:
-  static constexpr const char *_type_key =
-      sizeof(key_t) == 4 ? "cuda.GpuCache32" : "cuda.GpuCache64";
-  DGL_DECLARE_OBJECT_TYPE_INFO(GpuCache, Object);
-
-  GpuCache(size_t num_items, size_t num_feats)
+  GpuCacheImpl(size_t num_items, size_t num_feats)
       : num_feats(num_feats),
         cache(std::make_unique<gpu_cache_t>(
             (num_items + bucket_size - 1) / bucket_size, num_feats)) {
@@ -116,12 +122,7 @@ class GpuCache : public runtime::Object {
   int cuda_device;
 };
 
-static_assert(sizeof(unsigned int) == 4);
-DGL_DEFINE_OBJECT_REF(GpuCacheRef32, GpuCache<unsigned int>);
-// The cu file in HugeCTR gpu cache uses unsigned int and long long.
-// Changing to int64_t results in a mismatch of template arguments.
-static_assert(sizeof(long long) == 8);                      // NOLINT
-DGL_DEFINE_OBJECT_REF(GpuCacheRef64, GpuCache<long long>);  // NOLINT
+DGL_DEFINE_OBJECT_REF(GpuCacheRef, GpuCache);
 
 /* CAPI **********************************************************************/
 
@@ -133,12 +134,27 @@ DGL_REGISTER_GLOBAL("cuda._CAPI_DGLGpuCacheCreate")
       const size_t num_feats = args[1];
       const int num_bits = args[2];
 
-      if (num_bits == 32)
-        *rv = GpuCacheRef32(
-            std::make_shared<GpuCache<unsigned int>>(num_items, num_feats));
+      int device;
+      CUDA_CALL(hipGetDevice(&device))
+      int warp_size = 0;
+      CUDA_CALL(hipDeviceGetAttribute(
+          &warp_size, hipDeviceAttributeWarpSize, device));
+
+      if (num_bits == 32 && warp_size == 32)
+        *rv = GpuCacheRef(
+            std::make_shared<GpuCacheImpl<uint32_t, 32>>(num_items, num_feats));
+      else if (num_bits == 32 && warp_size == 64)
+        *rv = GpuCacheRef(
+            std::make_shared<GpuCacheImpl<uint32_t, 64>>(num_items, num_feats));
+      else if (num_bits == 64 && warp_size == 32)
+        *rv = GpuCacheRef(
+            std::make_shared<GpuCacheImpl<uint64_t, 32>>(num_items, num_feats));
+      else if (num_bits == 64 && warp_size == 64)
+        *rv = GpuCacheRef(
+            std::make_shared<GpuCacheImpl<uint64_t, 64>>(num_items, num_feats));
       else
-        *rv = GpuCacheRef64(std::make_shared<GpuCache<long long>>(  // NOLINT
-            num_items, num_feats));
+        LOG(FATAL) << "Unsupported key size " << num_bits << " and warp size "
+                   << warp_size;
     });
 
 DGL_REGISTER_GLOBAL("cuda._CAPI_DGLGpuCacheQuery")
@@ -146,21 +162,12 @@ DGL_REGISTER_GLOBAL("cuda._CAPI_DGLGpuCacheQuery")
       IdArray keys = args[1];
 
       List<ObjectRef> ret;
-      if (keys->dtype.bits == 32) {
-        GpuCacheRef32 cache = args[0];
-        auto result = cache->Query(keys);
+      GpuCacheRef cache = args[0];
+      auto result = cache->Query(keys);
 
-        ret.push_back(Value(MakeValue(std::get<0>(result))));
-        ret.push_back(Value(MakeValue(std::get<1>(result))));
-        ret.push_back(Value(MakeValue(std::get<2>(result))));
-      } else {
-        GpuCacheRef64 cache = args[0];
-        auto result = cache->Query(keys);
-
-        ret.push_back(Value(MakeValue(std::get<0>(result))));
-        ret.push_back(Value(MakeValue(std::get<1>(result))));
-        ret.push_back(Value(MakeValue(std::get<2>(result))));
-      }
+      ret.push_back(Value(MakeValue(std::get<0>(result))));
+      ret.push_back(Value(MakeValue(std::get<1>(result))));
+      ret.push_back(Value(MakeValue(std::get<2>(result))));
 
       *rv = ret;
     });
@@ -170,13 +177,8 @@ DGL_REGISTER_GLOBAL("cuda._CAPI_DGLGpuCacheReplace")
       IdArray keys = args[1];
       NDArray values = args[2];
 
-      if (keys->dtype.bits == 32) {
-        GpuCacheRef32 cache = args[0];
-        cache->Replace(keys, values);
-      } else {
-        GpuCacheRef64 cache = args[0];
-        cache->Replace(keys, values);
-      }
+      GpuCacheRef cache = args[0];
+      cache->Replace(keys, values);
 
       *rv = List<ObjectRef>{};
     });

@@ -261,140 +261,143 @@ __global__ void get_kernel(const key_type* d_keys, const size_t len, float* d_va
                            ref_counter_type* slot_counter, const size_t capacity_in_set,
                            const slabset* keys, const float* vals, mutex* set_mutex,
                            const size_t task_per_warp_tile) {
-  // Lane(thread) ID within a warp_tile
-  cg::thread_block_tile<warp_size> warp_tile =
-      cg::tiled_partition<warp_size>(cg::this_thread_block());
-  const size_t lane_idx = warp_tile.thread_rank();
-  // Warp tile global ID
-  const size_t warp_tile_global_idx =
-      (blockIdx.x * (blockDim.x / warp_size)) + warp_tile.meta_group_rank();
-  // The index of key for this thread
-  const size_t key_idx = (warp_tile_global_idx * task_per_warp_tile) + lane_idx;
-  // The assigned key for this lane(thread)
-  key_type key;
-  // The dst slabset and the dst slab inside this set
-  size_t src_set;
-  size_t src_slab;
-  // The variable that contains the missing key
-  key_type missing_key;
-  // The variable that contains the index for the missing key
-  uint64_t missing_index;
-  // The counter for counting the missing key in this warp
-  uint8_t warp_missing_counter = 0;
-  // Active flag: whether current lane(thread) has unfinished task
-  bool active = false;
-  if (lane_idx < task_per_warp_tile) {
-    if (key_idx < len) {
-      active = true;
-      key = d_keys[key_idx];
-      src_set = set_hasher::hash(key) % capacity_in_set;
-      src_slab = slab_hasher::hash(key) % set_associativity;
-    }
-  }
-
-  // Lane participate in warp_tile ballot to produce warp-level work queue
-  unsigned active_mask = warp_tile.ballot(active);
-
-  // The warp-level outer loop: finish all the tasks within the work queue
-  while (active_mask != 0) {
-    // Next task in the work quere, start from lower index lane(thread)
-    int next_lane = __ffs(active_mask) - 1;
-    // Broadcast the task and the global index to all lane in the warp_tile
-    key_type next_key = warp_tile.shfl(key, next_lane);
-    size_t next_idx = warp_tile.shfl(key_idx, next_lane);
-    size_t next_set = warp_tile.shfl(src_set, next_lane);
-    size_t next_slab = warp_tile.shfl(src_slab, next_lane);
-
-    // Counter to record how many slab have been searched
-    size_t counter = 0;
-
-    // Working queue before task started
-    const unsigned old_active_mask = active_mask;
-
-    // Lock the slabset before operating the slabset
-    warp_lock_mutex<mutex, warp_size>(warp_tile, set_mutex[next_set]);
-
-    // The warp-level inner loop: finish a single task in the work queue
-    while (active_mask == old_active_mask) {
-      // When all the slabs inside a slabset have been searched, mark missing task, task is
-      // completed
-      if (counter >= set_associativity) {
-        if (lane_idx == warp_missing_counter) {
-          missing_key = next_key;
-          missing_index = next_idx;
-        }
-
-        if (lane_idx == (size_t)next_lane) {
-          active = false;
-        }
-
-        warp_missing_counter++;
-        active_mask = warp_tile.ballot(active);
-        break;
+  assert(warp_size <= warpSize);
+  if constexpr (warp_size <= warpSize) {
+    // Lane(thread) ID within a warp_tile
+    cg::thread_block_tile<warp_size> warp_tile =
+        cg::tiled_partition<warp_size>(cg::this_thread_block());
+    const size_t lane_idx = warp_tile.thread_rank();
+    // Warp tile global ID
+    const size_t warp_tile_global_idx =
+        (blockIdx.x * (blockDim.x / warp_size)) + warp_tile.meta_group_rank();
+    // The index of key for this thread
+    const size_t key_idx = (warp_tile_global_idx * task_per_warp_tile) + lane_idx;
+    // The assigned key for this lane(thread)
+    key_type key;
+    // The dst slabset and the dst slab inside this set
+    size_t src_set;
+    size_t src_slab;
+    // The variable that contains the missing key
+    key_type missing_key;
+    // The variable that contains the index for the missing key
+    uint64_t missing_index;
+    // The counter for counting the missing key in this warp
+    uint8_t warp_missing_counter = 0;
+    // Active flag: whether current lane(thread) has unfinished task
+    bool active = false;
+    if (lane_idx < task_per_warp_tile) {
+      if (key_idx < len) {
+        active = true;
+        key = d_keys[key_idx];
+        src_set = set_hasher::hash(key) % capacity_in_set;
+        src_slab = slab_hasher::hash(key) % set_associativity;
       }
-
-      // The warp_tile read out the slab
-      key_type read_key = keys[next_set].set_[next_slab].slab_[lane_idx];
-
-      // Compare the slab data with the target key
-      int found_lane = __ffs(static_cast<unsigned int>(warp_tile.ballot(read_key == next_key))) - 1;
-
-      // If found, mark hit task, copy the founded data, the task is completed
-      if (found_lane >= 0) {
-        size_t found_offset = (next_set * set_associativity + next_slab) * warp_size + found_lane;
-        if (lane_idx == (size_t)next_lane) {
-          slot_counter[found_offset] = global_counter->load(cuda::std::memory_order_relaxed);
-          active = false;
-        }
-
-        warp_tile_copy<warp_size>(lane_idx, embedding_vec_size,
-                                  d_values + next_idx * embedding_vec_size,
-                                  vals + found_offset * embedding_vec_size);
-
-        active_mask = warp_tile.ballot(active);
-        break;
-      }
-
-      // Compare the slab data with empty key, if found empty key, mark missing task, task is
-      // completed
-      if (warp_tile.ballot(read_key == empty_key) != 0) {
-        if (lane_idx == warp_missing_counter) {
-          missing_key = next_key;
-          missing_index = next_idx;
-        }
-
-        if (lane_idx == (size_t)next_lane) {
-          active = false;
-        }
-
-        warp_missing_counter++;
-        active_mask = warp_tile.ballot(active);
-        break;
-      }
-
-      // Not found in this slab, the task is not completed, goto searching next slab
-      counter++;
-      next_slab = (next_slab + 1) % set_associativity;
     }
 
-    // Unlock the slabset after operating the slabset
-    warp_unlock_mutex<mutex, warp_size>(warp_tile, set_mutex[next_set]);
-  }
+    // Lane participate in warp_tile ballot to produce warp-level work queue
+    unsigned active_mask = warp_tile.ballot(active);
 
-  // After warp_tile complete the working queue, save the result for output
-  // First thread of the warp_tile accumulate the missing length to global variable
-  // TODO(nod-ai/dgl#14): clang miscompiles if this isn't initialized even
-  // though the shfl instructions are marked with maybe_undef. Figure out
-  // whether this is indeed a clang bug and remove this initialization.
-  size_t warp_position = 0;
-  if (lane_idx == 0) {
-    warp_position = atomicAdd(d_missing_len, (size_t)warp_missing_counter);
-  }
-  warp_position = warp_tile.shfl(warp_position, 0);
+    // The warp-level outer loop: finish all the tasks within the work queue
+    while (active_mask != 0) {
+      // Next task in the work quere, start from lower index lane(thread)
+      int next_lane = __ffs(active_mask) - 1;
+      // Broadcast the task and the global index to all lane in the warp_tile
+      key_type next_key = warp_tile.shfl(key, next_lane);
+      size_t next_idx = warp_tile.shfl(key_idx, next_lane);
+      size_t next_set = warp_tile.shfl(src_set, next_lane);
+      size_t next_slab = warp_tile.shfl(src_slab, next_lane);
 
-  if (lane_idx < warp_missing_counter) {
-    d_missing_keys[warp_position + lane_idx] = missing_key;
-    d_missing_index[warp_position + lane_idx] = missing_index;
+      // Counter to record how many slab have been searched
+      size_t counter = 0;
+
+      // Working queue before task started
+      const unsigned old_active_mask = active_mask;
+
+      // Lock the slabset before operating the slabset
+      warp_lock_mutex<mutex, warp_size>(warp_tile, set_mutex[next_set]);
+
+      // The warp-level inner loop: finish a single task in the work queue
+      while (active_mask == old_active_mask) {
+        // When all the slabs inside a slabset have been searched, mark missing task, task is
+        // completed
+        if (counter >= set_associativity) {
+          if (lane_idx == warp_missing_counter) {
+            missing_key = next_key;
+            missing_index = next_idx;
+          }
+
+          if (lane_idx == (size_t)next_lane) {
+            active = false;
+          }
+
+          warp_missing_counter++;
+          active_mask = warp_tile.ballot(active);
+          break;
+        }
+
+        // The warp_tile read out the slab
+        key_type read_key = keys[next_set].set_[next_slab].slab_[lane_idx];
+
+        // Compare the slab data with the target key
+        int found_lane = __ffs(static_cast<unsigned int>(warp_tile.ballot(read_key == next_key))) - 1;
+
+        // If found, mark hit task, copy the founded data, the task is completed
+        if (found_lane >= 0) {
+          size_t found_offset = (next_set * set_associativity + next_slab) * warp_size + found_lane;
+          if (lane_idx == (size_t)next_lane) {
+            slot_counter[found_offset] = global_counter->load(cuda::std::memory_order_relaxed);
+            active = false;
+          }
+
+          warp_tile_copy<warp_size>(lane_idx, embedding_vec_size,
+                                    d_values + next_idx * embedding_vec_size,
+                                    vals + found_offset * embedding_vec_size);
+
+          active_mask = warp_tile.ballot(active);
+          break;
+        }
+
+        // Compare the slab data with empty key, if found empty key, mark missing task, task is
+        // completed
+        if (warp_tile.ballot(read_key == empty_key) != 0) {
+          if (lane_idx == warp_missing_counter) {
+            missing_key = next_key;
+            missing_index = next_idx;
+          }
+
+          if (lane_idx == (size_t)next_lane) {
+            active = false;
+          }
+
+          warp_missing_counter++;
+          active_mask = warp_tile.ballot(active);
+          break;
+        }
+
+        // Not found in this slab, the task is not completed, goto searching next slab
+        counter++;
+        next_slab = (next_slab + 1) % set_associativity;
+      }
+
+      // Unlock the slabset after operating the slabset
+      warp_unlock_mutex<mutex, warp_size>(warp_tile, set_mutex[next_set]);
+    }
+
+    // After warp_tile complete the working queue, save the result for output
+    // First thread of the warp_tile accumulate the missing length to global variable
+    // TODO(nod-ai/dgl#14): clang miscompiles if this isn't initialized even
+    // though the shfl instructions are marked with maybe_undef. Figure out
+    // whether this is indeed a clang bug and remove this initialization.
+    size_t warp_position = 0;
+    if (lane_idx == 0) {
+      warp_position = atomicAdd(d_missing_len, (size_t)warp_missing_counter);
+    }
+    warp_position = warp_tile.shfl(warp_position, 0);
+
+    if (lane_idx < warp_missing_counter) {
+      d_missing_keys[warp_position + lane_idx] = missing_key;
+      d_missing_index[warp_position + lane_idx] = missing_index;
+    }
   }
 }
 #else
@@ -409,141 +412,144 @@ __global__ void get_kernel(const key_type* d_keys, const size_t len, float* d_va
                            volatile ref_counter_type* slot_counter, const size_t capacity_in_set,
                            volatile slabset* keys, volatile float* vals, volatile int* set_mutex,
                            const size_t task_per_warp_tile) {
-  // Lane(thread) ID within a warp_tile
-  cg::thread_block_tile<warp_size> warp_tile =
-      cg::tiled_partition<warp_size>(cg::this_thread_block());
-  const size_t lane_idx = warp_tile.thread_rank();
-  // Warp tile global ID
-  const size_t warp_tile_global_idx =
-      (blockIdx.x * (blockDim.x / warp_size)) + warp_tile.meta_group_rank();
-  // The index of key for this thread
-  const size_t key_idx = (warp_tile_global_idx * task_per_warp_tile) + lane_idx;
-  // The assigned key for this lane(thread)
-  key_type key;
-  // The dst slabset and the dst slab inside this set
-  size_t src_set;
-  size_t src_slab;
-  // The variable that contains the missing key
-  key_type missing_key;
-  // The variable that contains the index for the missing key
-  uint64_t missing_index;
-  // The counter for counting the missing key in this warp
-  uint8_t warp_missing_counter = 0;
-  // Active flag: whether current lane(thread) has unfinished task
-  bool active = false;
-  if (lane_idx < task_per_warp_tile) {
-    if (key_idx < len) {
-      active = true;
-      key = d_keys[key_idx];
-      src_set = set_hasher::hash(key) % capacity_in_set;
-      src_slab = slab_hasher::hash(key) % set_associativity;
-    }
-  }
-
-  // Lane participate in warp_tile ballot to produce warp-level work queue
-  unsigned active_mask = warp_tile.ballot(active);
-
-  // The warp-level outer loop: finish all the tasks within the work queue
-  while (active_mask != 0) {
-    // Next task in the work quere, start from lower index lane(thread)
-    int next_lane = __ffs(active_mask) - 1;
-    // Broadcast the task and the global index to all lane in the warp_tile
-    key_type next_key = warp_tile.shfl(key, next_lane);
-    size_t next_idx = warp_tile.shfl(key_idx, next_lane);
-    size_t next_set = warp_tile.shfl(src_set, next_lane);
-    size_t next_slab = warp_tile.shfl(src_slab, next_lane);
-
-    // Counter to record how many slab have been searched
-    size_t counter = 0;
-
-    // Working queue before task started
-    const unsigned old_active_mask = active_mask;
-
-    // Lock the slabset before operating the slabset
-    warp_lock_mutex<warp_size>(warp_tile, set_mutex[next_set]);
-
-    // The warp-level inner loop: finish a single task in the work queue
-    while (active_mask == old_active_mask) {
-      // When all the slabs inside a slabset have been searched, mark missing task, task is
-      // completed
-      if (counter >= set_associativity) {
-        if (lane_idx == warp_missing_counter) {
-          missing_key = next_key;
-          missing_index = next_idx;
-        }
-
-        if (lane_idx == (size_t)next_lane) {
-          active = false;
-        }
-
-        warp_missing_counter++;
-        active_mask = warp_tile.ballot(active);
-        break;
+  assert(warp_size <= warpSize);
+  if constexpr (warp_size <= warpSize) {
+    // Lane(thread) ID within a warp_tile
+    cg::thread_block_tile<warp_size> warp_tile =
+        cg::tiled_partition<warp_size>(cg::this_thread_block());
+    const size_t lane_idx = warp_tile.thread_rank();
+    // Warp tile global ID
+    const size_t warp_tile_global_idx =
+        (blockIdx.x * (blockDim.x / warp_size)) + warp_tile.meta_group_rank();
+    // The index of key for this thread
+    const size_t key_idx = (warp_tile_global_idx * task_per_warp_tile) + lane_idx;
+    // The assigned key for this lane(thread)
+    key_type key;
+    // The dst slabset and the dst slab inside this set
+    size_t src_set;
+    size_t src_slab;
+    // The variable that contains the missing key
+    key_type missing_key;
+    // The variable that contains the index for the missing key
+    uint64_t missing_index;
+    // The counter for counting the missing key in this warp
+    uint8_t warp_missing_counter = 0;
+    // Active flag: whether current lane(thread) has unfinished task
+    bool active = false;
+    if (lane_idx < task_per_warp_tile) {
+      if (key_idx < len) {
+        active = true;
+        key = d_keys[key_idx];
+        src_set = set_hasher::hash(key) % capacity_in_set;
+        src_slab = slab_hasher::hash(key) % set_associativity;
       }
-
-      // The warp_tile read out the slab
-      key_type read_key = ((volatile key_type*)(keys[next_set].set_[next_slab].slab_))[lane_idx];
-
-      // Compare the slab data with the target key
-      int found_lane = __ffs(static_cast<unsigned int>(warp_tile.ballot(read_key == next_key))) - 1;
-
-      // If found, mark hit task, copy the founded data, the task is completed
-      if (found_lane >= 0) {
-        size_t found_offset = (next_set * set_associativity + next_slab) * warp_size + found_lane;
-        if (lane_idx == (size_t)next_lane) {
-          slot_counter[found_offset] = atomicAdd(global_counter, 0);
-          active = false;
-        }
-
-        warp_tile_copy<warp_size>(lane_idx, embedding_vec_size,
-                                  (volatile float*)(d_values + next_idx * embedding_vec_size),
-                                  (volatile float*)(vals + found_offset * embedding_vec_size));
-
-        active_mask = warp_tile.ballot(active);
-        break;
-      }
-
-      // Compare the slab data with empty key, if found empty key, mark missing task, task is
-      // completed
-      if (warp_tile.ballot(read_key == empty_key) != 0) {
-        if (lane_idx == warp_missing_counter) {
-          missing_key = next_key;
-          missing_index = next_idx;
-        }
-
-        if (lane_idx == (size_t)next_lane) {
-          active = false;
-        }
-
-        warp_missing_counter++;
-        active_mask = warp_tile.ballot(active);
-        break;
-      }
-
-      // Not found in this slab, the task is not completed, goto searching next slab
-      counter++;
-      next_slab = (next_slab + 1) % set_associativity;
     }
 
-    // Unlock the slabset after operating the slabset
-    warp_unlock_mutex<warp_size>(warp_tile, set_mutex[next_set]);
-  }
+    // Lane participate in warp_tile ballot to produce warp-level work queue
+    unsigned active_mask = warp_tile.ballot(active);
 
-  // After warp_tile complete the working queue, save the result for output
-  // First thread of the warp_tile accumulate the missing length to global
-  // variable.
-  // TODO(nod-ai/dgl#14): clang miscompiles if this isn't initialized even
-  // though the shfl instructions are marked with maybe_undef. Figure out
-  // whether this is indeed a clang bug and remove this initialization.
-  size_t warp_position = 0;
-  if (lane_idx == 0) {
-    warp_position = atomicAdd(d_missing_len, (size_t)warp_missing_counter);
-  }
-  warp_position = warp_tile.shfl(warp_position, 0);
+    // The warp-level outer loop: finish all the tasks within the work queue
+    while (active_mask != 0) {
+      // Next task in the work quere, start from lower index lane(thread)
+      int next_lane = __ffs(active_mask) - 1;
+      // Broadcast the task and the global index to all lane in the warp_tile
+      key_type next_key = warp_tile.shfl(key, next_lane);
+      size_t next_idx = warp_tile.shfl(key_idx, next_lane);
+      size_t next_set = warp_tile.shfl(src_set, next_lane);
+      size_t next_slab = warp_tile.shfl(src_slab, next_lane);
 
-  if (lane_idx < warp_missing_counter) {
-    d_missing_keys[warp_position + lane_idx] = missing_key;
-    d_missing_index[warp_position + lane_idx] = missing_index;
+      // Counter to record how many slab have been searched
+      size_t counter = 0;
+
+      // Working queue before task started
+      const unsigned old_active_mask = active_mask;
+
+      // Lock the slabset before operating the slabset
+      warp_lock_mutex<warp_size>(warp_tile, set_mutex[next_set]);
+
+      // The warp-level inner loop: finish a single task in the work queue
+      while (active_mask == old_active_mask) {
+        // When all the slabs inside a slabset have been searched, mark missing task, task is
+        // completed
+        if (counter >= set_associativity) {
+          if (lane_idx == warp_missing_counter) {
+            missing_key = next_key;
+            missing_index = next_idx;
+          }
+
+          if (lane_idx == (size_t)next_lane) {
+            active = false;
+          }
+
+          warp_missing_counter++;
+          active_mask = warp_tile.ballot(active);
+          break;
+        }
+
+        // The warp_tile read out the slab
+        key_type read_key = ((volatile key_type*)(keys[next_set].set_[next_slab].slab_))[lane_idx];
+
+        // Compare the slab data with the target key
+        int found_lane = __ffs(static_cast<unsigned int>(warp_tile.ballot(read_key == next_key))) - 1;
+
+        // If found, mark hit task, copy the founded data, the task is completed
+        if (found_lane >= 0) {
+          size_t found_offset = (next_set * set_associativity + next_slab) * warp_size + found_lane;
+          if (lane_idx == (size_t)next_lane) {
+            slot_counter[found_offset] = atomicAdd(global_counter, 0);
+            active = false;
+          }
+
+          warp_tile_copy<warp_size>(lane_idx, embedding_vec_size,
+                                    (volatile float*)(d_values + next_idx * embedding_vec_size),
+                                    (volatile float*)(vals + found_offset * embedding_vec_size));
+
+          active_mask = warp_tile.ballot(active);
+          break;
+        }
+
+        // Compare the slab data with empty key, if found empty key, mark missing task, task is
+        // completed
+        if (warp_tile.ballot(read_key == empty_key) != 0) {
+          if (lane_idx == warp_missing_counter) {
+            missing_key = next_key;
+            missing_index = next_idx;
+          }
+
+          if (lane_idx == (size_t)next_lane) {
+            active = false;
+          }
+
+          warp_missing_counter++;
+          active_mask = warp_tile.ballot(active);
+          break;
+        }
+
+        // Not found in this slab, the task is not completed, goto searching next slab
+        counter++;
+        next_slab = (next_slab + 1) % set_associativity;
+      }
+
+      // Unlock the slabset after operating the slabset
+      warp_unlock_mutex<warp_size>(warp_tile, set_mutex[next_set]);
+    }
+
+    // After warp_tile complete the working queue, save the result for output
+    // First thread of the warp_tile accumulate the missing length to global
+    // variable.
+    // TODO(nod-ai/dgl#14): clang miscompiles if this isn't initialized even
+    // though the shfl instructions are marked with maybe_undef. Figure out
+    // whether this is indeed a clang bug and remove this initialization.
+    size_t warp_position = 0;
+    if (lane_idx == 0) {
+      warp_position = atomicAdd(d_missing_len, (size_t)warp_missing_counter);
+    }
+    warp_position = warp_tile.shfl(warp_position, 0);
+
+    if (lane_idx < warp_missing_counter) {
+      d_missing_keys[warp_position + lane_idx] = missing_key;
+      d_missing_index[warp_position + lane_idx] = missing_index;
+    }
   }
 }
 #endif
@@ -562,150 +568,153 @@ __global__ void insert_replace_kernel(const key_type* d_keys, const float* d_val
                                       const atomic_ref_counter_type* global_counter,
                                       const size_t capacity_in_set,
                                       const size_t task_per_warp_tile) {
-  // Lane(thread) ID within a warp_tile
-  cg::thread_block_tile<warp_size> warp_tile =
-      cg::tiled_partition<warp_size>(cg::this_thread_block());
-  const size_t lane_idx = warp_tile.thread_rank();
-  // Warp tile global ID
-  const size_t warp_tile_global_idx =
-      (blockIdx.x * (blockDim.x / warp_size)) + warp_tile.meta_group_rank();
-  // The index of key for this thread
-  const size_t key_idx = (warp_tile_global_idx * task_per_warp_tile) + lane_idx;
-  // The assigned key for this lane(thread)
-  key_type key;
-  // The dst slabset and the dst slab inside this set
-  size_t src_set;
-  size_t src_slab;
-  // Active flag: whether current lane(thread) has unfinished task
-  bool active = false;
-  if (lane_idx < task_per_warp_tile) {
-    if (key_idx < len) {
-      active = true;
-      key = d_keys[key_idx];
-      src_set = set_hasher::hash(key) % capacity_in_set;
-      src_slab = slab_hasher::hash(key) % set_associativity;
-    }
-  }
-
-  // Lane participate in warp_tile ballot to produce warp-level work queue
-  unsigned active_mask = warp_tile.ballot(active);
-
-  // The warp-level outer loop: finish all the tasks within the work queue
-  while (active_mask != 0) {
-    // Next task in the work quere, start from lower index lane(thread)
-    int next_lane = __ffs(active_mask) - 1;
-    // Broadcast the task, the global index and the src slabset and slab to all lane in a warp_tile
-    key_type next_key = warp_tile.shfl(key, next_lane);
-    size_t next_idx = warp_tile.shfl(key_idx, next_lane);
-    size_t next_set = warp_tile.shfl(src_set, next_lane);
-    size_t next_slab = warp_tile.shfl(src_slab, next_lane);
-    size_t first_slab = next_slab;
-
-    // Counter to record how many slab have been searched
-    size_t counter = 0;
-
-    // Variable to keep the min slot counter during the probing
-    ref_counter_type min_slot_counter_val = max_ref_counter_type;
-    // Variable to keep the slab distance for slot with min counter
-    size_t slab_distance = max_slab_distance;
-    // Variable to keep the slot distance for slot with min counter within the slab
-    size_t slot_distance;
-    // Working queue before task started
-    const unsigned old_active_mask = active_mask;
-
-    // Lock the slabset before operating the slabset
-    warp_lock_mutex<mutex, warp_size>(warp_tile, set_mutex[next_set]);
-
-    // The warp-level inner loop: finish a single task in the work queue
-    while (active_mask == old_active_mask) {
-      // When all the slabs inside a slabset have been searched
-      // and no empty slots or target slots are found. Replace with LRU
-      if (counter >= set_associativity) {
-        // (sub)Warp all-reduction, the reduction result store in all threads
-        warp_min_reduction<ref_counter_type, warp_size>(warp_tile, min_slot_counter_val,
-                                                        slab_distance, slot_distance);
-
-        // Calculate the position of LR slot
-        size_t target_slab = (first_slab + slab_distance) % set_associativity;
-        size_t slot_index =
-            (next_set * set_associativity + target_slab) * warp_size + slot_distance;
-
-        // Replace the LR slot
-        if (lane_idx == (size_t)next_lane) {
-          keys[next_set].set_[target_slab].slab_[slot_distance] = key;
-          slot_counter[slot_index] = global_counter->load(cuda::std::memory_order_relaxed);
-        }
-
-        warp_tile_copy<warp_size>(lane_idx, embedding_vec_size,
-                                  vals + slot_index * embedding_vec_size,
-                                  d_values + next_idx * embedding_vec_size);
-
-        // Replace complete, mark this task completed
-        if (lane_idx == (size_t)next_lane) {
-          active = false;
-        }
-
-        active_mask = warp_tile.ballot(active);
-        break;
+  assert(warp_size <= warpSize);
+  if constexpr (warp_size <= warpSize) {
+    // Lane(thread) ID within a warp_tile
+    cg::thread_block_tile<warp_size> warp_tile =
+        cg::tiled_partition<warp_size>(cg::this_thread_block());
+    const size_t lane_idx = warp_tile.thread_rank();
+    // Warp tile global ID
+    const size_t warp_tile_global_idx =
+        (blockIdx.x * (blockDim.x / warp_size)) + warp_tile.meta_group_rank();
+    // The index of key for this thread
+    const size_t key_idx = (warp_tile_global_idx * task_per_warp_tile) + lane_idx;
+    // The assigned key for this lane(thread)
+    key_type key;
+    // The dst slabset and the dst slab inside this set
+    size_t src_set;
+    size_t src_slab;
+    // Active flag: whether current lane(thread) has unfinished task
+    bool active = false;
+    if (lane_idx < task_per_warp_tile) {
+      if (key_idx < len) {
+        active = true;
+        key = d_keys[key_idx];
+        src_set = set_hasher::hash(key) % capacity_in_set;
+        src_slab = slab_hasher::hash(key) % set_associativity;
       }
-
-      // The warp_tile read out the slab
-      key_type read_key = keys[next_set].set_[next_slab].slab_[lane_idx];
-
-      // Compare the slab data with the target key
-      int found_lane = __ffs(static_cast<unsigned int>(warp_tile.ballot(read_key == next_key))) - 1;
-
-      // If found target key, the insertion/replace is no longer needed.
-      // Refresh the slot, the task is completed
-      if (found_lane >= 0) {
-        size_t found_offset = (next_set * set_associativity + next_slab) * warp_size + found_lane;
-        if (lane_idx == (size_t)next_lane) {
-          slot_counter[found_offset] = global_counter->load(cuda::std::memory_order_relaxed);
-          active = false;
-        }
-
-        active_mask = warp_tile.ballot(active);
-        break;
-      }
-
-      // Compare the slab data with empty key.
-      // If found empty key, do insertion,the task is complete
-      found_lane = __ffs(static_cast<unsigned int>(warp_tile.ballot(read_key == empty_key))) - 1;
-      if (found_lane >= 0) {
-        size_t found_offset = (next_set * set_associativity + next_slab) * warp_size + found_lane;
-
-        if (lane_idx == (size_t)next_lane) {
-          keys[next_set].set_[next_slab].slab_[found_lane] = key;
-          slot_counter[found_offset] = global_counter->load(cuda::std::memory_order_relaxed);
-        }
-
-        warp_tile_copy<warp_size>(lane_idx, embedding_vec_size,
-                                  vals + found_offset * embedding_vec_size,
-                                  d_values + next_idx * embedding_vec_size);
-
-        if (lane_idx == (size_t)next_lane) {
-          active = false;
-        }
-
-        active_mask = warp_tile.ballot(active);
-        break;
-      }
-
-      // If no target or unused slot found in this slab,
-      // Refresh LR info, continue probing
-      ref_counter_type read_slot_counter =
-          slot_counter[(next_set * set_associativity + next_slab) * warp_size + lane_idx];
-      if (read_slot_counter < min_slot_counter_val) {
-        min_slot_counter_val = read_slot_counter;
-        slab_distance = counter;
-      }
-
-      counter++;
-      next_slab = (next_slab + 1) % set_associativity;
     }
 
-    // Unlock the slabset after operating the slabset
-    warp_unlock_mutex<mutex, warp_size>(warp_tile, set_mutex[next_set]);
+    // Lane participate in warp_tile ballot to produce warp-level work queue
+    unsigned active_mask = warp_tile.ballot(active);
+
+    // The warp-level outer loop: finish all the tasks within the work queue
+    while (active_mask != 0) {
+      // Next task in the work quere, start from lower index lane(thread)
+      int next_lane = __ffs(active_mask) - 1;
+      // Broadcast the task, the global index and the src slabset and slab to all lane in a warp_tile
+      key_type next_key = warp_tile.shfl(key, next_lane);
+      size_t next_idx = warp_tile.shfl(key_idx, next_lane);
+      size_t next_set = warp_tile.shfl(src_set, next_lane);
+      size_t next_slab = warp_tile.shfl(src_slab, next_lane);
+      size_t first_slab = next_slab;
+
+      // Counter to record how many slab have been searched
+      size_t counter = 0;
+
+      // Variable to keep the min slot counter during the probing
+      ref_counter_type min_slot_counter_val = max_ref_counter_type;
+      // Variable to keep the slab distance for slot with min counter
+      size_t slab_distance = max_slab_distance;
+      // Variable to keep the slot distance for slot with min counter within the slab
+      size_t slot_distance;
+      // Working queue before task started
+      const unsigned old_active_mask = active_mask;
+
+      // Lock the slabset before operating the slabset
+      warp_lock_mutex<mutex, warp_size>(warp_tile, set_mutex[next_set]);
+
+      // The warp-level inner loop: finish a single task in the work queue
+      while (active_mask == old_active_mask) {
+        // When all the slabs inside a slabset have been searched
+        // and no empty slots or target slots are found. Replace with LRU
+        if (counter >= set_associativity) {
+          // (sub)Warp all-reduction, the reduction result store in all threads
+          warp_min_reduction<ref_counter_type, warp_size>(warp_tile, min_slot_counter_val,
+                                                          slab_distance, slot_distance);
+
+          // Calculate the position of LR slot
+          size_t target_slab = (first_slab + slab_distance) % set_associativity;
+          size_t slot_index =
+              (next_set * set_associativity + target_slab) * warp_size + slot_distance;
+
+          // Replace the LR slot
+          if (lane_idx == (size_t)next_lane) {
+            keys[next_set].set_[target_slab].slab_[slot_distance] = key;
+            slot_counter[slot_index] = global_counter->load(cuda::std::memory_order_relaxed);
+          }
+
+          warp_tile_copy<warp_size>(lane_idx, embedding_vec_size,
+                                    vals + slot_index * embedding_vec_size,
+                                    d_values + next_idx * embedding_vec_size);
+
+          // Replace complete, mark this task completed
+          if (lane_idx == (size_t)next_lane) {
+            active = false;
+          }
+
+          active_mask = warp_tile.ballot(active);
+          break;
+        }
+
+        // The warp_tile read out the slab
+        key_type read_key = keys[next_set].set_[next_slab].slab_[lane_idx];
+
+        // Compare the slab data with the target key
+        int found_lane = __ffs(static_cast<unsigned int>(warp_tile.ballot(read_key == next_key))) - 1;
+
+        // If found target key, the insertion/replace is no longer needed.
+        // Refresh the slot, the task is completed
+        if (found_lane >= 0) {
+          size_t found_offset = (next_set * set_associativity + next_slab) * warp_size + found_lane;
+          if (lane_idx == (size_t)next_lane) {
+            slot_counter[found_offset] = global_counter->load(cuda::std::memory_order_relaxed);
+            active = false;
+          }
+
+          active_mask = warp_tile.ballot(active);
+          break;
+        }
+
+        // Compare the slab data with empty key.
+        // If found empty key, do insertion,the task is complete
+        found_lane = __ffs(static_cast<unsigned int>(warp_tile.ballot(read_key == empty_key))) - 1;
+        if (found_lane >= 0) {
+          size_t found_offset = (next_set * set_associativity + next_slab) * warp_size + found_lane;
+
+          if (lane_idx == (size_t)next_lane) {
+            keys[next_set].set_[next_slab].slab_[found_lane] = key;
+            slot_counter[found_offset] = global_counter->load(cuda::std::memory_order_relaxed);
+          }
+
+          warp_tile_copy<warp_size>(lane_idx, embedding_vec_size,
+                                    vals + found_offset * embedding_vec_size,
+                                    d_values + next_idx * embedding_vec_size);
+
+          if (lane_idx == (size_t)next_lane) {
+            active = false;
+          }
+
+          active_mask = warp_tile.ballot(active);
+          break;
+        }
+
+        // If no target or unused slot found in this slab,
+        // Refresh LR info, continue probing
+        ref_counter_type read_slot_counter =
+            slot_counter[(next_set * set_associativity + next_slab) * warp_size + lane_idx];
+        if (read_slot_counter < min_slot_counter_val) {
+          min_slot_counter_val = read_slot_counter;
+          slab_distance = counter;
+        }
+
+        counter++;
+        next_slab = (next_slab + 1) % set_associativity;
+      }
+
+      // Unlock the slabset after operating the slabset
+      warp_unlock_mutex<mutex, warp_size>(warp_tile, set_mutex[next_set]);
+    }
   }
 }
 #else
@@ -721,150 +730,153 @@ __global__ void insert_replace_kernel(const key_type* d_keys, const float* d_val
                                       volatile int* set_mutex, ref_counter_type* global_counter,
                                       const size_t capacity_in_set,
                                       const size_t task_per_warp_tile) {
-  // Lane(thread) ID within a warp_tile
-  cg::thread_block_tile<warp_size> warp_tile =
-      cg::tiled_partition<warp_size>(cg::this_thread_block());
-  const size_t lane_idx = warp_tile.thread_rank();
-  // Warp tile global ID
-  const size_t warp_tile_global_idx =
-      (blockIdx.x * (blockDim.x / warp_size)) + warp_tile.meta_group_rank();
-  // The index of key for this thread
-  const size_t key_idx = (warp_tile_global_idx * task_per_warp_tile) + lane_idx;
-  // The assigned key for this lane(thread)
-  key_type key;
-  // The dst slabset and the dst slab inside this set
-  size_t src_set;
-  size_t src_slab;
-  // Active flag: whether current lane(thread) has unfinished task
-  bool active = false;
-  if (lane_idx < task_per_warp_tile) {
-    if (key_idx < len) {
-      active = true;
-      key = d_keys[key_idx];
-      src_set = set_hasher::hash(key) % capacity_in_set;
-      src_slab = slab_hasher::hash(key) % set_associativity;
-    }
-  }
-
-  // Lane participate in warp_tile ballot to produce warp-level work queue
-  unsigned active_mask = warp_tile.ballot(active);
-
-  // The warp-level outer loop: finish all the tasks within the work queue
-  while (active_mask != 0) {
-    // Next task in the work quere, start from lower index lane(thread)
-    int next_lane = __ffs(active_mask) - 1;
-    // Broadcast the task, the global index and the src slabset and slab to all lane in a warp_tile
-    key_type next_key = warp_tile.shfl(key, next_lane);
-    size_t next_idx = warp_tile.shfl(key_idx, next_lane);
-    size_t next_set = warp_tile.shfl(src_set, next_lane);
-    size_t next_slab = warp_tile.shfl(src_slab, next_lane);
-    size_t first_slab = next_slab;
-
-    // Counter to record how many slab have been searched
-    size_t counter = 0;
-
-    // Variable to keep the min slot counter during the probing
-    ref_counter_type min_slot_counter_val = max_ref_counter_type;
-    // Variable to keep the slab distance for slot with min counter
-    size_t slab_distance = max_slab_distance;
-    // Variable to keep the slot distance for slot with min counter within the slab
-    size_t slot_distance;
-    // Working queue before task started
-    const unsigned old_active_mask = active_mask;
-
-    // Lock the slabset before operating the slabset
-    warp_lock_mutex<warp_size>(warp_tile, set_mutex[next_set]);
-
-    // The warp-level inner loop: finish a single task in the work queue
-    while (active_mask == old_active_mask) {
-      // When all the slabs inside a slabset have been searched
-      // and no empty slots or target slots are found. Replace with LRU
-      if (counter >= set_associativity) {
-        // (sub)Warp all-reduction, the reduction result store in all threads
-        warp_min_reduction<ref_counter_type, warp_size>(warp_tile, min_slot_counter_val,
-                                                        slab_distance, slot_distance);
-
-        // Calculate the position of LR slot
-        size_t target_slab = (first_slab + slab_distance) % set_associativity;
-        size_t slot_index =
-            (next_set * set_associativity + target_slab) * warp_size + slot_distance;
-
-        // Replace the LR slot
-        if (lane_idx == (size_t)next_lane) {
-          ((volatile key_type*)(keys[next_set].set_[target_slab].slab_))[slot_distance] = key;
-          slot_counter[slot_index] = atomicAdd(global_counter, 0);
-        }
-
-        warp_tile_copy<warp_size>(lane_idx, embedding_vec_size,
-                                  (volatile float*)(vals + slot_index * embedding_vec_size),
-                                  (volatile float*)(d_values + next_idx * embedding_vec_size));
-
-        // Replace complete, mark this task completed
-        if (lane_idx == (size_t)next_lane) {
-          active = false;
-        }
-
-        active_mask = warp_tile.ballot(active);
-        break;
+  assert(warp_size <= warpSize);
+  if constexpr (warp_size <= warpSize) {
+    // Lane(thread) ID within a warp_tile
+    cg::thread_block_tile<warp_size> warp_tile =
+        cg::tiled_partition<warp_size>(cg::this_thread_block());
+    const size_t lane_idx = warp_tile.thread_rank();
+    // Warp tile global ID
+    const size_t warp_tile_global_idx =
+        (blockIdx.x * (blockDim.x / warp_size)) + warp_tile.meta_group_rank();
+    // The index of key for this thread
+    const size_t key_idx = (warp_tile_global_idx * task_per_warp_tile) + lane_idx;
+    // The assigned key for this lane(thread)
+    key_type key;
+    // The dst slabset and the dst slab inside this set
+    size_t src_set;
+    size_t src_slab;
+    // Active flag: whether current lane(thread) has unfinished task
+    bool active = false;
+    if (lane_idx < task_per_warp_tile) {
+      if (key_idx < len) {
+        active = true;
+        key = d_keys[key_idx];
+        src_set = set_hasher::hash(key) % capacity_in_set;
+        src_slab = slab_hasher::hash(key) % set_associativity;
       }
-
-      // The warp_tile read out the slab
-      key_type read_key = ((volatile key_type*)(keys[next_set].set_[next_slab].slab_))[lane_idx];
-
-      // Compare the slab data with the target key
-      int found_lane = __ffs(static_cast<unsigned int>(warp_tile.ballot(read_key == next_key))) - 1;
-
-      // If found target key, the insertion/replace is no longer needed.
-      // Refresh the slot, the task is completed
-      if (found_lane >= 0) {
-        size_t found_offset = (next_set * set_associativity + next_slab) * warp_size + found_lane;
-        if (lane_idx == (size_t)next_lane) {
-          slot_counter[found_offset] = atomicAdd(global_counter, 0);
-          active = false;
-        }
-
-        active_mask = warp_tile.ballot(active);
-        break;
-      }
-
-      // Compare the slab data with empty key.
-      // If found empty key, do insertion,the task is complete
-      found_lane = __ffs(static_cast<unsigned int>(warp_tile.ballot(read_key == empty_key))) - 1;
-      if (found_lane >= 0) {
-        size_t found_offset = (next_set * set_associativity + next_slab) * warp_size + found_lane;
-
-        if (lane_idx == (size_t)next_lane) {
-          ((volatile key_type*)(keys[next_set].set_[next_slab].slab_))[found_lane] = key;
-          slot_counter[found_offset] = atomicAdd(global_counter, 0);
-        }
-
-        warp_tile_copy<warp_size>(lane_idx, embedding_vec_size,
-                                  (volatile float*)(vals + found_offset * embedding_vec_size),
-                                  (volatile float*)(d_values + next_idx * embedding_vec_size));
-
-        if (lane_idx == (size_t)next_lane) {
-          active = false;
-        }
-
-        active_mask = warp_tile.ballot(active);
-        break;
-      }
-
-      // If no target or unused slot found in this slab,
-      // Refresh LR info, continue probing
-      ref_counter_type read_slot_counter =
-          slot_counter[(next_set * set_associativity + next_slab) * warp_size + lane_idx];
-      if (read_slot_counter < min_slot_counter_val) {
-        min_slot_counter_val = read_slot_counter;
-        slab_distance = counter;
-      }
-
-      counter++;
-      next_slab = (next_slab + 1) % set_associativity;
     }
 
-    // Unlock the slabset after operating the slabset
-    warp_unlock_mutex<warp_size>(warp_tile, set_mutex[next_set]);
+    // Lane participate in warp_tile ballot to produce warp-level work queue
+    unsigned active_mask = warp_tile.ballot(active);
+
+    // The warp-level outer loop: finish all the tasks within the work queue
+    while (active_mask != 0) {
+      // Next task in the work quere, start from lower index lane(thread)
+      int next_lane = __ffs(active_mask) - 1;
+      // Broadcast the task, the global index and the src slabset and slab to all lane in a warp_tile
+      key_type next_key = warp_tile.shfl(key, next_lane);
+      size_t next_idx = warp_tile.shfl(key_idx, next_lane);
+      size_t next_set = warp_tile.shfl(src_set, next_lane);
+      size_t next_slab = warp_tile.shfl(src_slab, next_lane);
+      size_t first_slab = next_slab;
+
+      // Counter to record how many slab have been searched
+      size_t counter = 0;
+
+      // Variable to keep the min slot counter during the probing
+      ref_counter_type min_slot_counter_val = max_ref_counter_type;
+      // Variable to keep the slab distance for slot with min counter
+      size_t slab_distance = max_slab_distance;
+      // Variable to keep the slot distance for slot with min counter within the slab
+      size_t slot_distance;
+      // Working queue before task started
+      const unsigned old_active_mask = active_mask;
+
+      // Lock the slabset before operating the slabset
+      warp_lock_mutex<warp_size>(warp_tile, set_mutex[next_set]);
+
+      // The warp-level inner loop: finish a single task in the work queue
+      while (active_mask == old_active_mask) {
+        // When all the slabs inside a slabset have been searched
+        // and no empty slots or target slots are found. Replace with LRU
+        if (counter >= set_associativity) {
+          // (sub)Warp all-reduction, the reduction result store in all threads
+          warp_min_reduction<ref_counter_type, warp_size>(warp_tile, min_slot_counter_val,
+                                                          slab_distance, slot_distance);
+
+          // Calculate the position of LR slot
+          size_t target_slab = (first_slab + slab_distance) % set_associativity;
+          size_t slot_index =
+              (next_set * set_associativity + target_slab) * warp_size + slot_distance;
+
+          // Replace the LR slot
+          if (lane_idx == (size_t)next_lane) {
+            ((volatile key_type*)(keys[next_set].set_[target_slab].slab_))[slot_distance] = key;
+            slot_counter[slot_index] = atomicAdd(global_counter, 0);
+          }
+
+          warp_tile_copy<warp_size>(lane_idx, embedding_vec_size,
+                                    (volatile float*)(vals + slot_index * embedding_vec_size),
+                                    (volatile float*)(d_values + next_idx * embedding_vec_size));
+
+          // Replace complete, mark this task completed
+          if (lane_idx == (size_t)next_lane) {
+            active = false;
+          }
+
+          active_mask = warp_tile.ballot(active);
+          break;
+        }
+
+        // The warp_tile read out the slab
+        key_type read_key = ((volatile key_type*)(keys[next_set].set_[next_slab].slab_))[lane_idx];
+
+        // Compare the slab data with the target key
+        int found_lane = __ffs(static_cast<unsigned int>(warp_tile.ballot(read_key == next_key))) - 1;
+
+        // If found target key, the insertion/replace is no longer needed.
+        // Refresh the slot, the task is completed
+        if (found_lane >= 0) {
+          size_t found_offset = (next_set * set_associativity + next_slab) * warp_size + found_lane;
+          if (lane_idx == (size_t)next_lane) {
+            slot_counter[found_offset] = atomicAdd(global_counter, 0);
+            active = false;
+          }
+
+          active_mask = warp_tile.ballot(active);
+          break;
+        }
+
+        // Compare the slab data with empty key.
+        // If found empty key, do insertion,the task is complete
+        found_lane = __ffs(static_cast<unsigned int>(warp_tile.ballot(read_key == empty_key))) - 1;
+        if (found_lane >= 0) {
+          size_t found_offset = (next_set * set_associativity + next_slab) * warp_size + found_lane;
+
+          if (lane_idx == (size_t)next_lane) {
+            ((volatile key_type*)(keys[next_set].set_[next_slab].slab_))[found_lane] = key;
+            slot_counter[found_offset] = atomicAdd(global_counter, 0);
+          }
+
+          warp_tile_copy<warp_size>(lane_idx, embedding_vec_size,
+                                    (volatile float*)(vals + found_offset * embedding_vec_size),
+                                    (volatile float*)(d_values + next_idx * embedding_vec_size));
+
+          if (lane_idx == (size_t)next_lane) {
+            active = false;
+          }
+
+          active_mask = warp_tile.ballot(active);
+          break;
+        }
+
+        // If no target or unused slot found in this slab,
+        // Refresh LR info, continue probing
+        ref_counter_type read_slot_counter =
+            slot_counter[(next_set * set_associativity + next_slab) * warp_size + lane_idx];
+        if (read_slot_counter < min_slot_counter_val) {
+          min_slot_counter_val = read_slot_counter;
+          slab_distance = counter;
+        }
+
+        counter++;
+        next_slab = (next_slab + 1) % set_associativity;
+      }
+
+      // Unlock the slabset after operating the slabset
+      warp_unlock_mutex<warp_size>(warp_tile, set_mutex[next_set]);
+    }
   }
 }
 #endif
@@ -878,105 +890,108 @@ __global__ void update_kernel(const key_type* d_keys, const size_t len, const fl
                               const size_t embedding_vec_size, const size_t capacity_in_set,
                               const slabset* keys, float* vals, mutex* set_mutex,
                               const size_t task_per_warp_tile) {
-  // Lane(thread) ID within a warp_tile
-  cg::thread_block_tile<warp_size> warp_tile =
-      cg::tiled_partition<warp_size>(cg::this_thread_block());
-  const size_t lane_idx = warp_tile.thread_rank();
-  // Warp tile global ID
-  const size_t warp_tile_global_idx =
-      (blockIdx.x * (blockDim.x / warp_size)) + warp_tile.meta_group_rank();
-  // The index of key for this thread
-  const size_t key_idx = (warp_tile_global_idx * task_per_warp_tile) + lane_idx;
-  // The assigned key for this lane(thread)
-  key_type key;
-  // The dst slabset and the dst slab inside this set
-  size_t src_set;
-  size_t src_slab;
-  // Active flag: whether current lane(thread) has unfinished task
-  bool active = false;
-  if (lane_idx < task_per_warp_tile) {
-    if (key_idx < len) {
-      active = true;
-      key = d_keys[key_idx];
-      src_set = set_hasher::hash(key) % capacity_in_set;
-      src_slab = slab_hasher::hash(key) % set_associativity;
-    }
-  }
-
-  // Lane participate in warp_tile ballot to produce warp-level work queue
-  unsigned active_mask = warp_tile.ballot(active);
-
-  // The warp-level outer loop: finish all the tasks within the work queue
-  while (active_mask != 0) {
-    // Next task in the work quere, start from lower index lane(thread)
-    int next_lane = __ffs(active_mask) - 1;
-    // Broadcast the task and the global index to all lane in the warp_tile
-    key_type next_key = warp_tile.shfl(key, next_lane);
-    size_t next_idx = warp_tile.shfl(key_idx, next_lane);
-    size_t next_set = warp_tile.shfl(src_set, next_lane);
-    size_t next_slab = warp_tile.shfl(src_slab, next_lane);
-
-    // Counter to record how many slab have been searched
-    size_t counter = 0;
-
-    // Working queue before task started
-    const unsigned old_active_mask = active_mask;
-
-    // Lock the slabset before operating the slabset
-    warp_lock_mutex<mutex, warp_size>(warp_tile, set_mutex[next_set]);
-
-    // The warp-level inner loop: finish a single task in the work queue
-    while (active_mask == old_active_mask) {
-      // When all the slabs inside a slabset have been searched, mark missing task, do nothing, task
-      // complete
-      if (counter >= set_associativity) {
-        if (lane_idx == (size_t)next_lane) {
-          active = false;
-        }
-
-        active_mask = warp_tile.ballot(active);
-        break;
+  assert(warp_size <= warpSize);
+  if constexpr (warp_size <= warpSize) {
+    // Lane(thread) ID within a warp_tile
+    cg::thread_block_tile<warp_size> warp_tile =
+        cg::tiled_partition<warp_size>(cg::this_thread_block());
+    const size_t lane_idx = warp_tile.thread_rank();
+    // Warp tile global ID
+    const size_t warp_tile_global_idx =
+        (blockIdx.x * (blockDim.x / warp_size)) + warp_tile.meta_group_rank();
+    // The index of key for this thread
+    const size_t key_idx = (warp_tile_global_idx * task_per_warp_tile) + lane_idx;
+    // The assigned key for this lane(thread)
+    key_type key;
+    // The dst slabset and the dst slab inside this set
+    size_t src_set;
+    size_t src_slab;
+    // Active flag: whether current lane(thread) has unfinished task
+    bool active = false;
+    if (lane_idx < task_per_warp_tile) {
+      if (key_idx < len) {
+        active = true;
+        key = d_keys[key_idx];
+        src_set = set_hasher::hash(key) % capacity_in_set;
+        src_slab = slab_hasher::hash(key) % set_associativity;
       }
-
-      // The warp_tile read out the slab
-      key_type read_key = keys[next_set].set_[next_slab].slab_[lane_idx];
-
-      // Compare the slab data with the target key
-      int found_lane = __ffs(static_cast<unsigned int>(warp_tile.ballot(read_key == next_key))) - 1;
-
-      // If found, mark hit task, update the value, the task is completed
-      if (found_lane >= 0) {
-        size_t found_offset = (next_set * set_associativity + next_slab) * warp_size + found_lane;
-        if (lane_idx == (size_t)next_lane) {
-          active = false;
-        }
-
-        warp_tile_copy<warp_size>(lane_idx, embedding_vec_size,
-                                  vals + found_offset * embedding_vec_size,
-                                  d_values + next_idx * embedding_vec_size);
-
-        active_mask = warp_tile.ballot(active);
-        break;
-      }
-
-      // Compare the slab data with empty key, if found empty key, mark missing task, do nothing,
-      // task is completed
-      if (warp_tile.ballot(read_key == empty_key) != 0) {
-        if (lane_idx == (size_t)next_lane) {
-          active = false;
-        }
-
-        active_mask = warp_tile.ballot(active);
-        break;
-      }
-
-      // Not found in this slab, the task is not completed, goto searching next slab
-      counter++;
-      next_slab = (next_slab + 1) % set_associativity;
     }
 
-    // Unlock the slabset after operating the slabset
-    warp_unlock_mutex<mutex, warp_size>(warp_tile, set_mutex[next_set]);
+    // Lane participate in warp_tile ballot to produce warp-level work queue
+    unsigned active_mask = warp_tile.ballot(active);
+
+    // The warp-level outer loop: finish all the tasks within the work queue
+    while (active_mask != 0) {
+      // Next task in the work quere, start from lower index lane(thread)
+      int next_lane = __ffs(active_mask) - 1;
+      // Broadcast the task and the global index to all lane in the warp_tile
+      key_type next_key = warp_tile.shfl(key, next_lane);
+      size_t next_idx = warp_tile.shfl(key_idx, next_lane);
+      size_t next_set = warp_tile.shfl(src_set, next_lane);
+      size_t next_slab = warp_tile.shfl(src_slab, next_lane);
+
+      // Counter to record how many slab have been searched
+      size_t counter = 0;
+
+      // Working queue before task started
+      const unsigned old_active_mask = active_mask;
+
+      // Lock the slabset before operating the slabset
+      warp_lock_mutex<mutex, warp_size>(warp_tile, set_mutex[next_set]);
+
+      // The warp-level inner loop: finish a single task in the work queue
+      while (active_mask == old_active_mask) {
+        // When all the slabs inside a slabset have been searched, mark missing task, do nothing, task
+        // complete
+        if (counter >= set_associativity) {
+          if (lane_idx == (size_t)next_lane) {
+            active = false;
+          }
+
+          active_mask = warp_tile.ballot(active);
+          break;
+        }
+
+        // The warp_tile read out the slab
+        key_type read_key = keys[next_set].set_[next_slab].slab_[lane_idx];
+
+        // Compare the slab data with the target key
+        int found_lane = __ffs(static_cast<unsigned int>(warp_tile.ballot(read_key == next_key))) - 1;
+
+        // If found, mark hit task, update the value, the task is completed
+        if (found_lane >= 0) {
+          size_t found_offset = (next_set * set_associativity + next_slab) * warp_size + found_lane;
+          if (lane_idx == (size_t)next_lane) {
+            active = false;
+          }
+
+          warp_tile_copy<warp_size>(lane_idx, embedding_vec_size,
+                                    vals + found_offset * embedding_vec_size,
+                                    d_values + next_idx * embedding_vec_size);
+
+          active_mask = warp_tile.ballot(active);
+          break;
+        }
+
+        // Compare the slab data with empty key, if found empty key, mark missing task, do nothing,
+        // task is completed
+        if (warp_tile.ballot(read_key == empty_key) != 0) {
+          if (lane_idx == (size_t)next_lane) {
+            active = false;
+          }
+
+          active_mask = warp_tile.ballot(active);
+          break;
+        }
+
+        // Not found in this slab, the task is not completed, goto searching next slab
+        counter++;
+        next_slab = (next_slab + 1) % set_associativity;
+      }
+
+      // Unlock the slabset after operating the slabset
+      warp_unlock_mutex<mutex, warp_size>(warp_tile, set_mutex[next_set]);
+    }
   }
 }
 #else
@@ -988,105 +1003,108 @@ __global__ void update_kernel(const key_type* d_keys, const size_t len, const fl
                               const size_t embedding_vec_size, const size_t capacity_in_set,
                               volatile slabset* keys, volatile float* vals, volatile int* set_mutex,
                               const size_t task_per_warp_tile) {
-  // Lane(thread) ID within a warp_tile
-  cg::thread_block_tile<warp_size> warp_tile =
-      cg::tiled_partition<warp_size>(cg::this_thread_block());
-  const size_t lane_idx = warp_tile.thread_rank();
-  // Warp tile global ID
-  const size_t warp_tile_global_idx =
-      (blockIdx.x * (blockDim.x / warp_size)) + warp_tile.meta_group_rank();
-  // The index of key for this thread
-  const size_t key_idx = (warp_tile_global_idx * task_per_warp_tile) + lane_idx;
-  // The assigned key for this lane(thread)
-  key_type key;
-  // The dst slabset and the dst slab inside this set
-  size_t src_set;
-  size_t src_slab;
-  // Active flag: whether current lane(thread) has unfinished task
-  bool active = false;
-  if (lane_idx < task_per_warp_tile) {
-    if (key_idx < len) {
-      active = true;
-      key = d_keys[key_idx];
-      src_set = set_hasher::hash(key) % capacity_in_set;
-      src_slab = slab_hasher::hash(key) % set_associativity;
-    }
-  }
-
-  // Lane participate in warp_tile ballot to produce warp-level work queue
-  unsigned active_mask = warp_tile.ballot(active);
-
-  // The warp-level outer loop: finish all the tasks within the work queue
-  while (active_mask != 0) {
-    // Next task in the work quere, start from lower index lane(thread)
-    int next_lane = __ffs(active_mask) - 1;
-    // Broadcast the task and the global index to all lane in the warp_tile
-    key_type next_key = warp_tile.shfl(key, next_lane);
-    size_t next_idx = warp_tile.shfl(key_idx, next_lane);
-    size_t next_set = warp_tile.shfl(src_set, next_lane);
-    size_t next_slab = warp_tile.shfl(src_slab, next_lane);
-
-    // Counter to record how many slab have been searched
-    size_t counter = 0;
-
-    // Working queue before task started
-    const unsigned old_active_mask = active_mask;
-
-    // Lock the slabset before operating the slabset
-    warp_lock_mutex<warp_size>(warp_tile, set_mutex[next_set]);
-
-    // The warp-level inner loop: finish a single task in the work queue
-    while (active_mask == old_active_mask) {
-      // When all the slabs inside a slabset have been searched, mark missing task, do nothing, task
-      // complete
-      if (counter >= set_associativity) {
-        if (lane_idx == (size_t)next_lane) {
-          active = false;
-        }
-
-        active_mask = warp_tile.ballot(active);
-        break;
+  assert(warp_size <= warpSize);
+  if constexpr (warp_size <= warpSize) {
+    // Lane(thread) ID within a warp_tile
+    cg::thread_block_tile<warp_size> warp_tile =
+        cg::tiled_partition<warp_size>(cg::this_thread_block());
+    const size_t lane_idx = warp_tile.thread_rank();
+    // Warp tile global ID
+    const size_t warp_tile_global_idx =
+        (blockIdx.x * (blockDim.x / warp_size)) + warp_tile.meta_group_rank();
+    // The index of key for this thread
+    const size_t key_idx = (warp_tile_global_idx * task_per_warp_tile) + lane_idx;
+    // The assigned key for this lane(thread)
+    key_type key;
+    // The dst slabset and the dst slab inside this set
+    size_t src_set;
+    size_t src_slab;
+    // Active flag: whether current lane(thread) has unfinished task
+    bool active = false;
+    if (lane_idx < task_per_warp_tile) {
+      if (key_idx < len) {
+        active = true;
+        key = d_keys[key_idx];
+        src_set = set_hasher::hash(key) % capacity_in_set;
+        src_slab = slab_hasher::hash(key) % set_associativity;
       }
-
-      // The warp_tile read out the slab
-      key_type read_key = ((volatile key_type*)(keys[next_set].set_[next_slab].slab_))[lane_idx];
-
-      // Compare the slab data with the target key
-      int found_lane = __ffs(static_cast<unsigned int>(warp_tile.ballot(read_key == next_key))) - 1;
-
-      // If found, mark hit task, update the value, the task is completed
-      if (found_lane >= 0) {
-        size_t found_offset = (next_set * set_associativity + next_slab) * warp_size + found_lane;
-        if (lane_idx == (size_t)next_lane) {
-          active = false;
-        }
-
-        warp_tile_copy<warp_size>(lane_idx, embedding_vec_size,
-                                  (volatile float*)(vals + found_offset * embedding_vec_size),
-                                  (volatile float*)(d_values + next_idx * embedding_vec_size));
-
-        active_mask = warp_tile.ballot(active);
-        break;
-      }
-
-      // Compare the slab data with empty key, if found empty key, mark missing task, do nothing,
-      // task is completed
-      if (warp_tile.ballot(read_key == empty_key) != 0) {
-        if (lane_idx == (size_t)next_lane) {
-          active = false;
-        }
-
-        active_mask = warp_tile.ballot(active);
-        break;
-      }
-
-      // Not found in this slab, the task is not completed, goto searching next slab
-      counter++;
-      next_slab = (next_slab + 1) % set_associativity;
     }
 
-    // Unlock the slabset after operating the slabset
-    warp_unlock_mutex<warp_size>(warp_tile, set_mutex[next_set]);
+    // Lane participate in warp_tile ballot to produce warp-level work queue
+    unsigned active_mask = warp_tile.ballot(active);
+
+    // The warp-level outer loop: finish all the tasks within the work queue
+    while (active_mask != 0) {
+      // Next task in the work quere, start from lower index lane(thread)
+      int next_lane = __ffs(active_mask) - 1;
+      // Broadcast the task and the global index to all lane in the warp_tile
+      key_type next_key = warp_tile.shfl(key, next_lane);
+      size_t next_idx = warp_tile.shfl(key_idx, next_lane);
+      size_t next_set = warp_tile.shfl(src_set, next_lane);
+      size_t next_slab = warp_tile.shfl(src_slab, next_lane);
+
+      // Counter to record how many slab have been searched
+      size_t counter = 0;
+
+      // Working queue before task started
+      const unsigned old_active_mask = active_mask;
+
+      // Lock the slabset before operating the slabset
+      warp_lock_mutex<warp_size>(warp_tile, set_mutex[next_set]);
+
+      // The warp-level inner loop: finish a single task in the work queue
+      while (active_mask == old_active_mask) {
+        // When all the slabs inside a slabset have been searched, mark missing task, do nothing, task
+        // complete
+        if (counter >= set_associativity) {
+          if (lane_idx == (size_t)next_lane) {
+            active = false;
+          }
+
+          active_mask = warp_tile.ballot(active);
+          break;
+        }
+
+        // The warp_tile read out the slab
+        key_type read_key = ((volatile key_type*)(keys[next_set].set_[next_slab].slab_))[lane_idx];
+
+        // Compare the slab data with the target key
+        int found_lane = __ffs(static_cast<unsigned int>(warp_tile.ballot(read_key == next_key))) - 1;
+
+        // If found, mark hit task, update the value, the task is completed
+        if (found_lane >= 0) {
+          size_t found_offset = (next_set * set_associativity + next_slab) * warp_size + found_lane;
+          if (lane_idx == (size_t)next_lane) {
+            active = false;
+          }
+
+          warp_tile_copy<warp_size>(lane_idx, embedding_vec_size,
+                                    (volatile float*)(vals + found_offset * embedding_vec_size),
+                                    (volatile float*)(d_values + next_idx * embedding_vec_size));
+
+          active_mask = warp_tile.ballot(active);
+          break;
+        }
+
+        // Compare the slab data with empty key, if found empty key, mark missing task, do nothing,
+        // task is completed
+        if (warp_tile.ballot(read_key == empty_key) != 0) {
+          if (lane_idx == (size_t)next_lane) {
+            active = false;
+          }
+
+          active_mask = warp_tile.ballot(active);
+          break;
+        }
+
+        // Not found in this slab, the task is not completed, goto searching next slab
+        counter++;
+        next_slab = (next_slab + 1) % set_associativity;
+      }
+
+      // Unlock the slabset after operating the slabset
+      warp_unlock_mutex<warp_size>(warp_tile, set_mutex[next_set]);
+    }
   }
 }
 #endif
@@ -1097,71 +1115,74 @@ template <typename key_type, typename slabset, typename mutex, key_type empty_ke
 __global__ void dump_kernel(key_type* d_keys, size_t* d_dump_counter, const slabset* keys,
                             mutex* set_mutex, const size_t start_set_index,
                             const size_t end_set_index) {
-  // Block-level counter used by all warp tiles within a block
-  __shared__ uint32_t block_acc;
-  // Initialize block-level counter
-  if (threadIdx.x == 0) {
-    block_acc = 0;
-  }
-  __syncthreads();
-  // Lane(thread) ID within a warp tile
-  cg::thread_block_tile<warp_size> warp_tile =
-      cg::tiled_partition<warp_size>(cg::this_thread_block());
-  const size_t lane_idx = warp_tile.thread_rank();
-  // Warp tile target slabset id
-  const size_t set_idx =
-      ((blockIdx.x * (blockDim.x / warp_size)) + warp_tile.meta_group_rank()) + start_set_index;
-  // Keys dump from cache
-  key_type read_key[set_associativity];
-  // Lane(thread) offset for storing each key
-  uint32_t thread_key_offset[set_associativity];
-  // Warp offset for storing each key
-  uint32_t warp_key_offset;
-  // Block offset for storing each key
-  __shared__ size_t block_key_offset;
+  assert(warp_size <= warpSize);
+  if constexpr (warp_size <= warpSize) {
+    // Block-level counter used by all warp tiles within a block
+    __shared__ uint32_t block_acc;
+    // Initialize block-level counter
+    if (threadIdx.x == 0) {
+      block_acc = 0;
+    }
+    __syncthreads();
+    // Lane(thread) ID within a warp tile
+    cg::thread_block_tile<warp_size> warp_tile =
+        cg::tiled_partition<warp_size>(cg::this_thread_block());
+    const size_t lane_idx = warp_tile.thread_rank();
+    // Warp tile target slabset id
+    const size_t set_idx =
+        ((blockIdx.x * (blockDim.x / warp_size)) + warp_tile.meta_group_rank()) + start_set_index;
+    // Keys dump from cache
+    key_type read_key[set_associativity];
+    // Lane(thread) offset for storing each key
+    uint32_t thread_key_offset[set_associativity];
+    // Warp offset for storing each key
+    uint32_t warp_key_offset;
+    // Block offset for storing each key
+    __shared__ size_t block_key_offset;
 
-  // Warp tile dump target slabset
-  if (set_idx < end_set_index) {
-    // Lock the slabset before operating the slabset
-    warp_lock_mutex<mutex, warp_size>(warp_tile, set_mutex[set_idx]);
+    // Warp tile dump target slabset
+    if (set_idx < end_set_index) {
+      // Lock the slabset before operating the slabset
+      warp_lock_mutex<mutex, warp_size>(warp_tile, set_mutex[set_idx]);
 
-    // The warp tile read out the slabset
-    for (unsigned slab_id = 0; slab_id < set_associativity; slab_id++) {
-      // The warp tile read out a slab
-      read_key[slab_id] = keys[set_idx].set_[slab_id].slab_[lane_idx];
+      // The warp tile read out the slabset
+      for (unsigned slab_id = 0; slab_id < set_associativity; slab_id++) {
+        // The warp tile read out a slab
+        read_key[slab_id] = keys[set_idx].set_[slab_id].slab_[lane_idx];
+      }
+
+      // Finish dumping the slabset, unlock the slabset
+      warp_unlock_mutex<mutex, warp_size>(warp_tile, set_mutex[set_idx]);
+
+      // Each lane(thread) within the warp tile calculate the offset to store its keys
+      uint32_t warp_tile_total_keys = 0;
+      for (unsigned slab_id = 0; slab_id < set_associativity; slab_id++) {
+        unsigned valid_mask = warp_tile.ballot(read_key[slab_id] != empty_key);
+        thread_key_offset[slab_id] =
+            __popc(valid_mask & ((1U << lane_idx) - 1U)) + warp_tile_total_keys;
+        warp_tile_total_keys = warp_tile_total_keys + __popc(valid_mask);
+      }
+
+      // Each warp tile request a unique place from the block-level counter
+      if (lane_idx == 0) {
+        warp_key_offset = atomicAdd(&block_acc, warp_tile_total_keys);
+      }
+      warp_key_offset = warp_tile.shfl(warp_key_offset, 0);
     }
 
-    // Finish dumping the slabset, unlock the slabset
-    warp_unlock_mutex<mutex, warp_size>(warp_tile, set_mutex[set_idx]);
-
-    // Each lane(thread) within the warp tile calculate the offset to store its keys
-    uint32_t warp_tile_total_keys = 0;
-    for (unsigned slab_id = 0; slab_id < set_associativity; slab_id++) {
-      unsigned valid_mask = warp_tile.ballot(read_key[slab_id] != empty_key);
-      thread_key_offset[slab_id] =
-          __popc(valid_mask & ((1U << lane_idx) - 1U)) + warp_tile_total_keys;
-      warp_tile_total_keys = warp_tile_total_keys + __popc(valid_mask);
+    // Each block request a unique place in global memory output buffer
+    __syncthreads();
+    if (threadIdx.x == 0) {
+      block_key_offset = atomicAdd(d_dump_counter, (size_t)block_acc);
     }
+    __syncthreads();
 
-    // Each warp tile request a unique place from the block-level counter
-    if (lane_idx == 0) {
-      warp_key_offset = atomicAdd(&block_acc, warp_tile_total_keys);
-    }
-    warp_key_offset = warp_tile.shfl(warp_key_offset, 0);
-  }
-
-  // Each block request a unique place in global memory output buffer
-  __syncthreads();
-  if (threadIdx.x == 0) {
-    block_key_offset = atomicAdd(d_dump_counter, (size_t)block_acc);
-  }
-  __syncthreads();
-
-  // Warp tile store the (non-empty)keys back to output buffer
-  if (set_idx < end_set_index) {
-    for (unsigned slab_id = 0; slab_id < set_associativity; slab_id++) {
-      if (read_key[slab_id] != empty_key) {
-        d_keys[block_key_offset + warp_key_offset + thread_key_offset[slab_id]] = read_key[slab_id];
+    // Warp tile store the (non-empty)keys back to output buffer
+    if (set_idx < end_set_index) {
+      for (unsigned slab_id = 0; slab_id < set_associativity; slab_id++) {
+        if (read_key[slab_id] != empty_key) {
+          d_keys[block_key_offset + warp_key_offset + thread_key_offset[slab_id]] = read_key[slab_id];
+        }
       }
     }
   }
@@ -1172,71 +1193,74 @@ template <typename key_type, typename slabset, key_type empty_key, int set_assoc
 __global__ void dump_kernel(key_type* d_keys, size_t* d_dump_counter, volatile slabset* keys,
                             volatile int* set_mutex, const size_t start_set_index,
                             const size_t end_set_index) {
-  // Block-level counter used by all warp tiles within a block
-  __shared__ uint32_t block_acc;
-  // Initialize block-level counter
-  if (threadIdx.x == 0) {
-    block_acc = 0;
-  }
-  __syncthreads();
-  // Lane(thread) ID within a warp tile
-  cg::thread_block_tile<warp_size> warp_tile =
-      cg::tiled_partition<warp_size>(cg::this_thread_block());
-  const size_t lane_idx = warp_tile.thread_rank();
-  // Warp tile target slabset id
-  const size_t set_idx =
-      ((blockIdx.x * (blockDim.x / warp_size)) + warp_tile.meta_group_rank()) + start_set_index;
-  // Keys dump from cache
-  key_type read_key[set_associativity];
-  // Lane(thread) offset for storing each key
-  uint32_t thread_key_offset[set_associativity];
-  // Warp offset for storing each key
-  uint32_t warp_key_offset;
-  // Block offset for storing each key
-  __shared__ size_t block_key_offset;
+  assert(warp_size <= warpSize);
+  if constexpr (warp_size <= warpSize) {
+    // Block-level counter used by all warp tiles within a block
+    __shared__ uint32_t block_acc;
+    // Initialize block-level counter
+    if (threadIdx.x == 0) {
+      block_acc = 0;
+    }
+    __syncthreads();
+    // Lane(thread) ID within a warp tile
+    cg::thread_block_tile<warp_size> warp_tile =
+        cg::tiled_partition<warp_size>(cg::this_thread_block());
+    const size_t lane_idx = warp_tile.thread_rank();
+    // Warp tile target slabset id
+    const size_t set_idx =
+        ((blockIdx.x * (blockDim.x / warp_size)) + warp_tile.meta_group_rank()) + start_set_index;
+    // Keys dump from cache
+    key_type read_key[set_associativity];
+    // Lane(thread) offset for storing each key
+    uint32_t thread_key_offset[set_associativity];
+    // Warp offset for storing each key
+    uint32_t warp_key_offset;
+    // Block offset for storing each key
+    __shared__ size_t block_key_offset;
 
-  // Warp tile dump target slabset
-  if (set_idx < end_set_index) {
-    // Lock the slabset before operating the slabset
-    warp_lock_mutex<warp_size>(warp_tile, set_mutex[set_idx]);
+    // Warp tile dump target slabset
+    if (set_idx < end_set_index) {
+      // Lock the slabset before operating the slabset
+      warp_lock_mutex<warp_size>(warp_tile, set_mutex[set_idx]);
 
-    // The warp tile read out the slabset
-    for (unsigned slab_id = 0; slab_id < set_associativity; slab_id++) {
-      // The warp tile read out a slab
-      read_key[slab_id] = ((volatile key_type*)(keys[set_idx].set_[slab_id].slab_))[lane_idx];
+      // The warp tile read out the slabset
+      for (unsigned slab_id = 0; slab_id < set_associativity; slab_id++) {
+        // The warp tile read out a slab
+        read_key[slab_id] = ((volatile key_type*)(keys[set_idx].set_[slab_id].slab_))[lane_idx];
+      }
+
+      // Finish dumping the slabset, unlock the slabset
+      warp_unlock_mutex<warp_size>(warp_tile, set_mutex[set_idx]);
+
+      // Each lane(thread) within the warp tile calculate the offset to store its keys
+      uint32_t warp_tile_total_keys = 0;
+      for (unsigned slab_id = 0; slab_id < set_associativity; slab_id++) {
+        unsigned valid_mask = warp_tile.ballot(read_key[slab_id] != empty_key);
+        thread_key_offset[slab_id] =
+            __popc(valid_mask & ((1U << lane_idx) - 1U)) + warp_tile_total_keys;
+        warp_tile_total_keys = warp_tile_total_keys + __popc(valid_mask);
+      }
+
+      // Each warp tile request a unique place from the block-level counter
+      if (lane_idx == 0) {
+        warp_key_offset = atomicAdd(&block_acc, warp_tile_total_keys);
+      }
+      warp_key_offset = warp_tile.shfl(warp_key_offset, 0);
     }
 
-    // Finish dumping the slabset, unlock the slabset
-    warp_unlock_mutex<warp_size>(warp_tile, set_mutex[set_idx]);
-
-    // Each lane(thread) within the warp tile calculate the offset to store its keys
-    uint32_t warp_tile_total_keys = 0;
-    for (unsigned slab_id = 0; slab_id < set_associativity; slab_id++) {
-      unsigned valid_mask = warp_tile.ballot(read_key[slab_id] != empty_key);
-      thread_key_offset[slab_id] =
-          __popc(valid_mask & ((1U << lane_idx) - 1U)) + warp_tile_total_keys;
-      warp_tile_total_keys = warp_tile_total_keys + __popc(valid_mask);
+    // Each block request a unique place in global memory output buffer
+    __syncthreads();
+    if (threadIdx.x == 0) {
+      block_key_offset = atomicAdd(d_dump_counter, (size_t)block_acc);
     }
+    __syncthreads();
 
-    // Each warp tile request a unique place from the block-level counter
-    if (lane_idx == 0) {
-      warp_key_offset = atomicAdd(&block_acc, warp_tile_total_keys);
-    }
-    warp_key_offset = warp_tile.shfl(warp_key_offset, 0);
-  }
-
-  // Each block request a unique place in global memory output buffer
-  __syncthreads();
-  if (threadIdx.x == 0) {
-    block_key_offset = atomicAdd(d_dump_counter, (size_t)block_acc);
-  }
-  __syncthreads();
-
-  // Warp tile store the (non-empty)keys back to output buffer
-  if (set_idx < end_set_index) {
-    for (unsigned slab_id = 0; slab_id < set_associativity; slab_id++) {
-      if (read_key[slab_id] != empty_key) {
-        d_keys[block_key_offset + warp_key_offset + thread_key_offset[slab_id]] = read_key[slab_id];
+    // Warp tile store the (non-empty)keys back to output buffer
+    if (set_idx < end_set_index) {
+      for (unsigned slab_id = 0; slab_id < set_associativity; slab_id++) {
+        if (read_key[slab_id] != empty_key) {
+          d_keys[block_key_offset + warp_key_offset + thread_key_offset[slab_id]] = read_key[slab_id];
+        }
       }
     }
   }
@@ -1263,14 +1287,20 @@ gpu_cache<key_type, ref_counter_type, empty_key, set_associativity, warp_size, s
     printf("Error: Invalid value for set_associativity.\n");
     return;
   }
-  // Power of 2 between 1 and SLAB_SIZE
-  if ((warp_size & (warp_size-1)) != 0 || warp_size < 1 || warp_size > SLAB_SIZE) {
-    printf("Error: Invalid value for warp_size %d.\n", warp_size);
-    return;
-  }
 
   // Get the current CUDA dev
   CUDA_CHECK(hipGetDevice(&dev_));
+
+  int threads_per_warp = 0;
+  CUDA_CHECK(hipDeviceGetAttribute(
+      &threads_per_warp, hipDeviceAttributeWarpSize, dev_));
+
+  // Power of 2 between 1 and threads per warp
+  if ((warp_size & (warp_size - 1)) != 0 || warp_size < 1 ||
+      warp_size > threads_per_warp) {
+    printf("Error: Invalid value for warp_size %d.\n", warp_size);
+    return;
+  }
 
   // Calculate # of slot
   num_slot_ = capacity_in_set_ * set_associativity * warp_size;
@@ -1311,14 +1341,20 @@ gpu_cache<key_type, ref_counter_type, empty_key, set_associativity, warp_size, s
     printf("Error: Invalid value for set_associativity.\n");
     return;
   }
-  // Power of 2 between 1 and SLAB_SIZE
-  if ((warp_size & (warp_size-1)) != 0 || warp_size < 1 || warp_size > SLAB_SIZE) {
-    printf("Error: Invalid value for warp_size %d.\n", warp_size);
-    return;
-  }
 
   // Get the current CUDA dev
   CUDA_CHECK(hipGetDevice(&dev_));
+
+  int threads_per_warp = 0;
+  CUDA_CHECK(hipDeviceGetAttribute(
+      &threads_per_warp, hipDeviceAttributeWarpSize, dev_));
+
+  // Power of 2 between 1 and threads per warp
+  if ((warp_size & (warp_size - 1)) != 0 || warp_size < 1 ||
+      warp_size > threads_per_warp) {
+    printf("Error: Invalid value for warp_size %d.\n", warp_size);
+    return;
+  }
 
   // Calculate # of slot
   num_slot_ = capacity_in_set_ * set_associativity * warp_size;
@@ -1655,8 +1691,16 @@ void gpu_cache<key_type, ref_counter_type, empty_key, set_associativity, warp_si
 }
 #endif
 
-template class gpu_cache<unsigned int, uint64_t, std::numeric_limits<unsigned int>::max(),
-                         SET_ASSOCIATIVITY, SLAB_SIZE>;
-template class gpu_cache<long long, uint64_t, std::numeric_limits<long long>::max(),
-                         SET_ASSOCIATIVITY, SLAB_SIZE>;
+template class gpu_cache<
+    uint32_t, uint64_t, std::numeric_limits<uint32_t>::max(), SET_ASSOCIATIVITY,
+    32>;
+template class gpu_cache<
+    uint64_t, uint64_t, std::numeric_limits<uint64_t>::max(), SET_ASSOCIATIVITY,
+    32>;
+template class gpu_cache<
+    uint32_t, uint64_t, std::numeric_limits<uint32_t>::max(), SET_ASSOCIATIVITY,
+    64>;
+template class gpu_cache<
+    uint64_t, uint64_t, std::numeric_limits<uint64_t>::max(), SET_ASSOCIATIVITY,
+    64>;
 }  // namespace gpu_cache

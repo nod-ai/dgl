@@ -321,7 +321,10 @@ void GatherMM(
   int64_t in_len = A->shape[1];   // cols of A
   const int64_t tot_num_rows = A->shape[0];
   const int ntx = 128;
-  const int nbx = ((tot_num_rows * DGL_WARP_SIZE + ntx - 1) / ntx);
+  int warp_size = 0;
+  CUDA_CALL(hipDeviceGetAttribute(
+      &warp_size, hipDeviceAttributeWarpSize, A->ctx.device_id));
+  const int nbx = ((tot_num_rows * warp_size + ntx - 1) / ntx);
   const dim3 nblks(nbx);
   const dim3 nthrs(ntx);
   CUDA_KERNEL_CALL(
@@ -354,7 +357,10 @@ void GatherMMScatter(
   int64_t in_len = A->shape[1];                                  // cols of A
   int64_t tot_num_rows = A->shape[0];
   const int ntx = 128;
-  const int nbx = ((tot_num_rows * DGL_WARP_SIZE + ntx - 1) / ntx);
+  int warp_size = 0;
+  CUDA_CALL(hipDeviceGetAttribute(
+      &warp_size, hipDeviceAttributeWarpSize, A->ctx.device_id));
+  const int nbx = ((tot_num_rows * warp_size + ntx - 1) / ntx);
   const dim3 nblks(nbx);
   const dim3 nthrs(ntx);
   if (B->ndim == 3) {
