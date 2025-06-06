@@ -26,8 +26,7 @@
 #include <cub/cub.cuh>
 
 #include <cuco/static_map.cuh>
-// libhipcxx does not provide proclaim_return_type, but hipCollections defines
-// it.
+// cuda/functional doesn't exist for HIP
 #ifndef GRAPHBOLT_USE_ROCM
 #include <cuda/functional>
 #endif
